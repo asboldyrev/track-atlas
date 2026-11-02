@@ -11,7 +11,11 @@ class Track extends Model
 
     protected function casts(): array
     {
-        return ['is_missing' => 'boolean'];
+        return [
+            'size' => 'integer',
+            'file_mtime' => 'integer',
+            'is_missing' => 'boolean',
+        ];
     }
 
     public function tags(): BelongsToMany
