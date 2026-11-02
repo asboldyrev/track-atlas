@@ -29,3 +29,4 @@ class ScanMusic extends Command
             return self::FAILURE;
         }
     }
+}
