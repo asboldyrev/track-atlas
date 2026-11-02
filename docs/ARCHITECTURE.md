@@ -1,0 +1,60 @@
+# Архитектура и технические решения
+
+## 1. Запуск
+Локальный Laravel (PHP/Composer) + Vue 3/Vite (Node/npm), SQLite. Inertia рассматривается как способ избежать отдельного SPA API; окончательно зависит от уже созданного Laravel-каркаса. Сам веб-проект **не контейнеризируется**. CLI-сканер — Artisan, API обогащения — PHP HTTP client.
+
+## 2. Предлагаемая модель БД
+
+### tracks
+`id`, `path` (уникальный путь относительно корня/идентификатора библиотеки), `filename`, `title`, `artist`, `album`, `raw_genre`, `size`, `file_mtime`, `status` (present/missing), `last_seen_at`, timestamps. При поддержке нескольких корней добавить `library_id`; для MVP достаточно одного корня.
+
+### tags
+`id`, `type` (genre|mood), `name`, `slug`, timestamps, уникальность (`type`, `slug`).
+
+### track_tag
+`track_id`, `tag_id`, `source` (manual|file|musicbrainz|openrouter|search|audio), timestamps; уникальность (`track_id`, `tag_id`). Ручное назначение имеет приоритет. Для источников, конкурирующих за один тег, по необходимости позже вынести provenance в отдельную сущность.
+
+### tag_suggestions (добавить при реализации AI)
+`id`, `track_id`, `tag_id` или `proposed_name`, `type`, `provider`, `model`, `confidence` nullable, `status` (pending|accepted|rejected), `details` JSON, timestamps. **Не смешивать** неподтверждённые рекомендации с активной пользовательской разметкой.
+
+### rejected/revoked assignments
+Для защиты ручных удалений от повторного автопредложения понадобится фиксировать отклонение пары track-tag (например, через `tag_suggestions` / отдельный список запретов). Простая политика MVP: автоматическое обновление не переписывает ручную разметку; при добавлении AI-обогащения расширить до явных отказов.
+
+## 3. Предлагаемые PHP-компоненты
+- `MusicScanner`: обход каталога, фильтрация форматов, обнаружение изменений, сводка.
+- `MetadataReader`: адаптер к getID3 и fallback имени файла.
+- `TrackRepository`/Eloquent: upsert и сохранение пользовательских тегов.
+- `TagNormalizer`: нормализация регистра, пробелов, дефисов и заданных алиасов.
+- `ReferenceFilter`: применяет условия OR в группах / AND между группами.
+- `EnrichmentService` и адаптеры `MusicBrainzProvider`, `OpenRouterProvider`, `SearchProvider`: добавляются только по мере реализации.
+- `AudioAnalysisProvider`: поздний внешний CLI/Docker-адаптер.
+
+Это логические зоны ответственности, а не требование создавать множество абстрактных классов в MVP.
+
+## 4. Потоки
+**Импорт:** путь → Artisan scanner → getID3/имя файла → upsert tracks → нормализация доступных жанров → SQLite → Vue.
+
+**Поиск:** Vue-фильтры → серверный запрос SQLite по `EXISTS`/joins → пагинированные `Artist — Title`.
+
+**AI (опционально):** выбор записей → PHP запрос к провайдеру → валидация JSON → таблица suggestions → подтверждение в UI → track_tag.
+
+**Аудио (позже):** Laravel формирует задания → одноразовый Docker контейнер с Python/Essentia, read-only папка → JSON результатов → проверка/подтверждение. Docker не нужен для обычной работы.
+
+## 5. Рекомендации по безопасности и качеству
+- Секреты только в окружении сервера, `.env` вне Git.
+- Не публиковать в логах абсолютные домашние пути и токены.
+- Никогда не писать в медиафайлы.
+- Запросы к внешним системам — только вручную, после информирования о метаданных/стоимости.
+- Ограничить ответы AI валидируемой схемой и списком доступных тегов; не доверять внешнему содержимому как инструкциям.
+- MusicBrainz требует аккуратной идентификации записи; известность артиста сама по себе не подтверждает жанр конкретного трека.
+- Допускать частичный неуспех и возможность перезапуска, не дублировать результаты.
+
+## 6. Полезные источники (кандидаты)
+- [getID3](https://github.com/JamesHeinrich/getID3)
+- [MusicBrainz API](https://musicbrainz.org/doc/MusicBrainz_API)
+- [OpenRouter API](https://openrouter.ai/docs)
+- [Perplexity Sonar](https://docs.perplexity.ai/)
+- [Essentia](https://essentia.upf.edu/)
+- [AcoustID](https://acoustid.org/)
+
+Способ интеграции, текущие цены, модельные возможности и лицензии проверяются отдельно на этапе реализации.
