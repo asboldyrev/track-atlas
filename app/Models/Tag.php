@@ -11,6 +11,6 @@ class Tag extends Model
 
     public function tracks(): BelongsToMany
     {
-        return $this->belongsToMany(Track::class)->withPivot('source');
+        return $this->belongsToMany(Track::class, 'track_tag')->withPivot('source');
     }
 }
