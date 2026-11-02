@@ -20,6 +20,6 @@ class Track extends Model
 
     public function tags(): BelongsToMany
     {
-        return $this->belongsToMany(Tag::class)->withPivot('source');
+        return $this->belongsToMany(Tag::class, 'track_tag')->withPivot('source');
     }
 }
