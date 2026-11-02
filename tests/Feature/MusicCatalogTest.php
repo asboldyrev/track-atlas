@@ -35,6 +35,28 @@ class MusicCatalogTest extends TestCase
         }
     }
 
+    public function test_scanner_recursively_indexes_nested_subfolders(): void
+    {
+        $folder = sys_get_temp_dir().'/track-atlas-nested-'.bin2hex(random_bytes(6));
+        File::makeDirectory($folder.'/Artist/Album/Disc 1', 0755, true);
+        try {
+            file_put_contents($folder.'/Artist/Album/Disc 1/Artist - Deep Song.flac', 'fake-audio');
+            file_put_contents($folder.'/Artist/Artist - Shallow Song.mp3', 'fake-audio');
+
+            $scanner = app(MusicScanner::class);
+            $this->assertSame(2, $scanner->scan($folder)['added']);
+            $this->assertDatabaseHas('tracks', [
+                'path' => 'Artist/Album/Disc 1/Artist - Deep Song.flac',
+                'title' => 'Deep Song',
+                'artist' => 'Artist',
+            ]);
+            $this->assertSame(2, $scanner->scan($folder)['unchanged']);
+            $this->assertDatabaseCount('tracks', 2);
+        } finally {
+            File::deleteDirectory($folder);
+        }
+    }
+
     public function test_filters_use_or_within_a_type_and_and_between_types(): void
     {
         $a = Track::create(['path'=>'a.mp3','title'=>'A','artist'=>'One','size'=>1,'file_mtime'=>1]);
