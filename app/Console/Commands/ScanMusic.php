@@ -7,7 +7,7 @@ use Illuminate\Console\Command;
 
 class ScanMusic extends Command
 {
-    protected $signature = 'music:scan {path? : Music folder; otherwise MUSIC_LIBRARY_PATH}';
+    protected $signature = 'music:scan {path? : Music folder; otherwise MUSIC_LIBRARY_PATH} {--refresh : Read tags again even for unchanged files}';
     protected $description = 'Index music files without changing the originals';
 
     public function handle(MusicScanner $scanner): int
@@ -19,7 +19,7 @@ class ScanMusic extends Command
         }
 
         try {
-            $stats = $scanner->scan($path);
+            $stats = $scanner->scan($path, (bool) $this->option('refresh'));
             foreach ($stats as $name => $value) {
                 $this->line("$name: $value");
             }
@@ -29,4 +29,3 @@ class ScanMusic extends Command
             return self::FAILURE;
         }
     }
-}
