@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Track;
-use Illuminate\Support\Facades\DB;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use FilesystemIterator;
@@ -11,7 +10,12 @@ use SplFileInfo;
 
 class MusicScanner
 {
-    public function scan(string $root): array
+    public function __construct(
+        private AudioMetadataReader $reader,
+        private FileGenreSynchronizer $genres,
+    ) {}
+
+    public function scan(string $root, bool $refresh = false): array
     {
         $realRoot = realpath($root);
         if (! $realRoot || ! is_dir($realRoot) || ! is_readable($realRoot)) {
@@ -29,12 +33,10 @@ class MusicScanner
                 continue;
             }
 
-            $absolute = $file->getPathname();
-            $resolved = realpath($absolute);
+            $resolved = realpath($file->getPathname());
             if ($resolved === false || ! str_starts_with($resolved, $realRoot.DIRECTORY_SEPARATOR)) {
                 continue;
             }
-
             if (! in_array(strtolower($file->getExtension()), config('music.extensions'), true)) {
                 continue;
             }
@@ -46,7 +48,7 @@ class MusicScanner
                 $size = $file->getSize();
                 $mtime = $file->getMTime();
                 $previous = Track::where('path', $relative)->first();
-                if ($previous && $previous->size === $size && $previous->file_mtime === $mtime) {
+                if (! $refresh && $previous && $previous->size === $size && $previous->file_mtime === $mtime) {
                     if ($previous->is_missing) {
                         $previous->update(['is_missing' => false]);
                     }
@@ -54,16 +56,14 @@ class MusicScanner
                     continue;
                 }
 
-                $name = pathinfo($file->getFilename(), PATHINFO_FILENAME);
-                $parts = preg_split('/\s+-\s+/', $name, 2);
-                $artist = count($parts) === 2 ? trim($parts[0]) : null;
-                $title = count($parts) === 2 ? trim($parts[1]) : trim($name);
-
-                Track::updateOrCreate(
+                $metadata = $this->reader->read($resolved);
+                $track = Track::updateOrCreate(
                     ['path' => $relative],
-                    ['title' => $title ?: $name, 'artist' => $artist,
-                        'size' => $size, 'file_mtime' => $mtime, 'is_missing' => false]
+                    ['title' => $metadata['title'], 'artist' => $metadata['artist'],
+                        'album' => $metadata['album'], 'size' => $size,
+                        'file_mtime' => $mtime, 'is_missing' => false]
                 );
+                $this->genres->sync($track, $metadata['genres']);
                 $stats[$previous ? 'updated' : 'added']++;
             } catch (\Throwable $e) {
                 $stats['errors']++;
@@ -71,7 +71,6 @@ class MusicScanner
             }
         }
 
-        // Only mark missing once traversal completed. Never delete user tags.
         $stats['missing'] = Track::query()
             ->where('is_missing', false)
             ->when($seen !== [], fn ($query) => $query->whereNotIn('path', $seen))
