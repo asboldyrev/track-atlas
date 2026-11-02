@@ -57,6 +57,36 @@ class MusicCatalogTest extends TestCase
         }
     }
 
+    public function test_refresh_imports_metadata_and_preserves_manual_tags(): void
+    {
+        $folder = sys_get_temp_dir().'/track-atlas-metadata-'.bin2hex(random_bytes(6));
+        File::makeDirectory($folder);
+        try {
+            file_put_contents($folder.'/Unknown.mp3', 'fake-audio');
+            $reader = \Mockery::mock(\App\Services\AudioMetadataReader::class);
+            $reader->shouldReceive('read')->twice()->andReturn([
+                'title' => 'Tagged title', 'artist' => 'Tagged artist',
+                'album' => 'Tagged album', 'genres' => ['Synthwave', 'Electronic'],
+            ]);
+            app()->instance(\App\Services\AudioMetadataReader::class, $reader);
+            $scanner = app(MusicScanner::class);
+            $this->assertSame(1, $scanner->scan($folder)['added']);
+            $track = Track::firstOrFail();
+            $this->assertSame('Tagged title', $track->title);
+            $this->assertSame('Tagged album', $track->album);
+            $this->assertSame(2, $track->tags()->count());
+
+            $manual = Tag::create(['type'=>'mood', 'name'=>'Dreamy', 'slug'=>'dreamy']);
+            $track->tags()->attach($manual->id, ['source'=>'manual']);
+            $this->assertSame(1, $scanner->scan($folder, true)['updated']);
+            $this->assertDatabaseCount('tags', 3);
+            $this->assertSame(3, $track->fresh()->tags()->count());
+            $this->assertSame('manual', $track->tags()->where('tags.id', $manual->id)->first()->pivot->source);
+        } finally {
+            File::deleteDirectory($folder);
+        }
+    }
+
     public function test_filters_use_or_within_a_type_and_and_between_types(): void
     {
         $a = Track::create(['path'=>'a.mp3','title'=>'A','artist'=>'One','size'=>1,'file_mtime'=>1]);
