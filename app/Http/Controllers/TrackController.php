@@ -23,9 +23,8 @@ class TrackController extends Controller
 
         $query = Track::query()->where('is_missing', false)->with('tags');
         if ($search = ($filters['search'] ?? null)) {
-            $escaped = addcslashes($search, '%_\\');
-            $query->where(fn ($q) => $q->where('title', 'like', "%$escaped%")
-                ->orWhere('artist', 'like', "%$escaped%"));
+            $query->where(fn ($q) => $q->where('title', 'like', '%'.$search.'%')
+                ->orWhere('artist', 'like', '%'.$search.'%'));
         }
         foreach (['genres' => 'genre', 'moods' => 'mood'] as $key => $type) {
             $ids = $filters[$key] ?? [];
@@ -44,11 +43,11 @@ class TrackController extends Controller
     public function update(Request $request, Track $track)
     {
         $data = $request->validate([
-            'tags' => ['present', 'array'],
+            'tags' => ['sometimes', 'array'],
             'tags.*' => ['integer', 'distinct', 'exists:tags,id'],
         ]);
-        // Explicit manual edit is authoritative.
-        $track->tags()->sync(collect($data['tags'])->mapWithKeys(fn ($id) => [$id => ['source' => 'manual']])->all());
+        // Explicit manual edit is authoritative, including clearing all categories.
+        $track->tags()->sync(collect($data['tags'] ?? [])->mapWithKeys(fn ($id) => [$id => ['source' => 'manual']])->all());
         return back()->with('status', 'Categories saved.');
     }
 
