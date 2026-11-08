@@ -185,14 +185,14 @@ async function applyBatch() {
   finally { saving.value = false }
 }
 
-async function classifySelected() {
+async function classifySelected(retryEmpty = false) {
   if (!selected.value.length || selected.value.length > 10) return
   aiBusy.value = true
   error.value = ''
   aiUsage.value = null
   try {
     const ids = [...selected.value]
-    const result = await mutate('/ai/classify', 'POST', { tracks: ids })
+    const result = await mutate('/ai/classify', 'POST', { tracks: ids, retry_empty: retryEmpty })
     if (result.usage) aiUsage.value = result.usage
     notice.value = result.message || ('Предложения получены: ' + result.processed + '. Пропущено ранее обработанных: ' + result.skipped)
     await loadCatalog()
@@ -342,6 +342,9 @@ onUnmounted(() => {
           <Button variant="outline" size="sm" :disabled="saving || aiBusy || selected.length > 10" @click="classifySelected">
             <LoaderCircle v-if="aiBusy" :size="16" class="animate-spin" />
             AI: классифицировать (до 10)
+          </Button>
+          <Button variant="outline" size="sm" :disabled="saving || aiBusy || selected.length > 10" @click="classifySelected(true)">
+            Повторить пустые AI-предложения
           </Button>
         </div>
 
