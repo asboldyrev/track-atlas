@@ -13,8 +13,12 @@ class TrackLookupMetadata
         $cleanArtist = $originalArtist;
         $cleanTitle = trim($title);
 
-        $videoPattern = '/\\s*(?:[\\[(]\\s*)?(?:official\\s+(?:music\\s+)?video|official\\s+audio|official\\s+lyric\\s+video|lyric\\s+video|lyrics?\\s+video|music\\s+video|4k\\s+upgrade|hd\\s+video)(?:[^\\]\\)]*)?[\\])]?(?=\\s*$)/iu';
-        $cleanTitle = preg_replace($videoPattern, '', $cleanTitle) ?? $cleanTitle;
+        // Remove a trailing bracketed music-video label; leave song versions alone.
+        $cleanTitle = preg_replace(
+            '/\\s*[\\[(]\\s*(?:(?:official\\s+)?(?:music\\s+)?video|official\\s+audio|lyric\\s+video|lyrics?\\s+video|4k\\s+upgrade|hd\\s+video)[^\\])]*[\\])]/iu',
+            '',
+            $cleanTitle,
+        ) ?? $cleanTitle;
 
         // Artist already present in ID3 and repeated at the beginning of Title.
         if ($cleanArtist !== '') {
