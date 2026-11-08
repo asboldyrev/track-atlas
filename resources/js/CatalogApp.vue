@@ -23,6 +23,8 @@ const newTagName = ref('')
 const newTagType = ref('genre')
 const batchTagId = ref('')
 const batchMode = ref('add')
+const aiBusy = ref(false)
+const aiUsage = ref(null)
 let requestNumber = 0
 let searchTimer
 
@@ -183,6 +185,38 @@ async function applyBatch() {
   finally { saving.value = false }
 }
 
+async function classifySelected() {
+  if (!selected.value.length || selected.value.length > 10) return
+  aiBusy.value = true
+  error.value = ''
+  aiUsage.value = null
+  try {
+    const ids = [...selected.value]
+    const result = await mutate('/ai/classify', 'POST', { tracks: ids })
+    if (result.usage) aiUsage.value = result.usage
+    notice.value = result.message || ('Предложения получены: ' + result.processed + '. Пропущено ранее обработанных: ' + result.skipped)
+    await loadCatalog()
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    aiBusy.value = false
+  }
+}
+
+async function decideSuggestion(suggestion, decision) {
+  saving.value = true
+  error.value = ''
+  try {
+    await mutate('/ai/suggestions/' + suggestion.id, 'PUT', { decision })
+    notice.value = decision === 'accept' ? 'Предложенные теги применены' : 'Предложение отклонено'
+    await loadCatalog()
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    saving.value = false
+  }
+}
+
 function backNavigation() {
   clearTimeout(searchTimer)
   readUrl()
@@ -305,7 +339,70 @@ onUnmounted(() => {
             <option value="remove">Удалить</option>
           </select>
           <Button size="sm" :disabled="saving || !batchTagId" @click="applyBatch"><CheckCheck :size="16" /> Применить</Button>
+          <Button variant="outline" size="sm" :disabled="saving || aiBusy || selected.length > 10" @click="classifySelected">
+            <LoaderCircle v-if="aiBusy" :size="16" class="animate-spin" />
+            AI: классифицировать (до 10)
+          </Button>
         </div>
+
+        <p v-if="aiUsage" class="mb-4 text-xs text-muted-foreground">OpenRouter: вход {{ aiUsage.prompt_tokens ?? 'н/д' }} токенов, выход {{ aiUsage.completion_tokens ?? 'н/д' }} токенов, стоимость {{ aiUsage.cost_usd === null ? 'не предоставлена' : ' class="rounded-xl border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
+          Треки не найдены. Измени фильтры или выполни php artisan music:scan.
+        </div>
+
+        <div v-for="track in rows" :key="track.id" class="border-b border-border py-4 last:border-0">
+          <div class="flex items-start gap-3">
+            <Checkbox :model-value="selected.includes(track.id)" class="mt-1" @update:model-value="toggleSelected(track.id, $event)" />
+            <div class="min-w-0 flex-1">
+              <h3 class="break-words text-sm font-semibold">{{ track.artist ? track.artist + ' — ' : '' }}{{ track.title }}</h3>
+              <p v-if="track.album" class="mt-1 text-xs text-muted-foreground">{{ track.album }}</p>
+              <div class="mt-2 flex flex-wrap gap-1.5">
+                <Badge v-for="tag in track.tags" :key="tag.id" :variant="tag.type === 'mood' ? 'outline' : 'secondary'">{{ tag.name }}</Badge>
+                <span v-if="!track.tags.length" class="text-xs text-muted-foreground">Без категорий</span>
+              </div>
+              <div v-for="suggestion in (track.metadata_suggestions || []).filter(s => s.status === 'pending')" :key="suggestion.id" class="mt-3 rounded-lg border border-border bg-muted/60 p-3 text-xs">
+                <div class="mb-2 font-semibold">Предложение OpenRouter <span class="font-normal text-muted-foreground">({{ suggestion.model }})</span></div>
+                <div class="mb-2 flex flex-wrap gap-1">
+                  <Badge v-for="genre in suggestion.genres || []" :key="'g' + genre" variant="secondary">{{ genre }}</Badge>
+                  <Badge v-for="mood in suggestion.moods || []" :key="'m' + mood" variant="outline">{{ mood }}</Badge>
+                  <span v-if="!(suggestion.genres || []).length && !(suggestion.moods || []).length" class="text-muted-foreground">Модель не смогла определить категории</span>
+                </div>
+                <div class="flex gap-2">
+                  <Button size="sm" :disabled="saving || aiBusy" @click="decideSuggestion(suggestion, 'accept')">Принять</Button>
+                  <Button size="sm" variant="outline" :disabled="saving || aiBusy" @click="decideSuggestion(suggestion, 'reject')">Отклонить</Button>
+                </div>
+              </div>
+            </div>
+            <Button variant="outline" size="sm" @click="editingId === track.id ? editingId = null : edit(track)">
+              {{ editingId === track.id ? 'Закрыть' : 'Теги' }}
+            </Button>
+          </div>
+
+          <div v-if="editingId === track.id" class="ml-7 mt-4 rounded-lg border border-border bg-muted/50 p-4">
+            <div v-for="(group, title) in { 'Жанры': genreTags, 'Настроения': moodTags }" :key="title" class="mb-4">
+              <h4 class="mb-2 text-xs font-semibold">{{ title }}</h4>
+              <div class="flex flex-wrap gap-x-4 gap-y-2">
+                <label v-for="tag in group" :key="tag.id" class="flex cursor-pointer items-center gap-2 text-sm">
+                  <Checkbox :model-value="editingTags.includes(tag.id)" @update:model-value="toggleEditTag(tag.id, $event)" />
+                  {{ tag.name }}
+                </label>
+              </div>
+            </div>
+            <Button size="sm" :disabled="saving" @click="saveTrack(track)">Сохранить категории</Button>
+          </div>
+        </div>
+
+        <div v-if="pagination.last_page > 1" class="mt-6 flex items-center justify-between">
+          <span class="text-xs text-muted-foreground">Страница {{ pagination.current_page }} из {{ pagination.last_page }}</span>
+          <div class="flex gap-2">
+            <Button variant="outline" size="sm" :disabled="loading || pagination.current_page <= 1" @click="changePage(pagination.current_page - 1)"><ChevronLeft :size="16" /> Назад</Button>
+            <Button variant="outline" size="sm" :disabled="loading || pagination.current_page >= pagination.last_page" @click="changePage(pagination.current_page + 1)">Далее <ChevronRight :size="16" /></Button>
+          </div>
+        </div>
+      </Card>
+    </div>
+  </div>
+</template>
+ + aiUsage.cost_usd.toFixed(6) }}</p>
 
         <div v-if="!rows.length && !loading" class="rounded-xl border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
           Треки не найдены. Измени фильтры или выполни php artisan music:scan.
