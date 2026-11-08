@@ -261,7 +261,7 @@ class OpenRouterClassificationTest extends TestCase
             ['id' => $track->id, 'genres' => ['Electronic'], 'moods' => ['Calm']],
         ]);
 
-        $result = app(\\App\\Services\\OpenRouterClassifier::class)->classify(collect([$track]));
+        $result = app(\App\Services\OpenRouterClassifier::class)->classify(collect([$track]));
 
         $this->assertSame(['Electronic'], $result['tracks'][$track->id]['genres']);
         Http::assertSentCount(1);
