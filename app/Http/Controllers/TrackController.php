@@ -7,7 +7,7 @@ use App\Models\Track;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Str;
+use App\Services\GenreNormalizer;
 use Illuminate\Validation\Rule;
 
 class TrackController extends Controller
@@ -95,14 +95,14 @@ class TrackController extends Controller
         return response()->json(['updated' => $tracks->count()]);
     }
 
-    public function storeTag(Request $request): JsonResponse
+    public function storeTag(Request $request, GenreNormalizer $normalizer): JsonResponse
     {
         $data = $request->validate([
             'type' => ['required', Rule::in(['genre', 'mood'])],
             'name' => ['required', 'string', 'max:80'],
         ]);
-        $name = trim($data['name']);
-        $slug = Str::slug($name);
+        $name = $data['type'] === 'genre' ? $normalizer->canonical($data['name']) : trim($data['name']);
+        $slug = $data['type'] === 'genre' ? $normalizer->slug($name) : \Illuminate\Support\Str::slug($name);
         if ($slug === '') {
             return response()->json(['message' => 'Введите название категории.'], 422);
         }
