@@ -109,6 +109,7 @@ class OpenRouterClassificationTest extends TestCase
         $this->assertSame('accepted', $proposal->fresh()->status);
         $this->assertSame(3, $track->fresh()->tags()->count());
         $this->assertDatabaseHas('tags', ['type' => 'genre', 'slug' => 'synthpop']);
+        $this->assertSame('openrouter', $track->fresh()->tags()->whereHas('tracks', fn ($query) => $query->whereKey($track->id))->where('type', 'genre')->first()->pivot->source);
         $this->assertSame('manual', $track->fresh()->tags()->where('tags.id', $manual->id)->first()->pivot->source);
 
         $this->putJson('/ai/suggestions/'.$proposal->id, ['decision' => 'accept'])
