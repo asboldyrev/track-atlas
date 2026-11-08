@@ -160,4 +160,51 @@ class OpenRouterClassificationTest extends TestCase
         $this->putJson('/ai/suggestions/'.$proposal->id, ['decision' => 'accept'])->assertUnprocessable();
         $this->assertDatabaseCount('tags', 0);
     }
+    public function test_retry_empty_suggestion_reclassifies_without_changing_active_tags(): void
+    {
+        config(['openrouter.key' => 'fake-secret']);
+        $track = $this->makeTrack();
+        $empty = MetadataSuggestion::create([
+            'track_id' => $track->id,
+            'provider' => 'openrouter',
+            'model' => 'openai/gpt-4o-mini',
+            'genres' => [],
+            'moods' => [],
+            'status' => 'pending',
+        ]);
+        $this->fakeClassification([
+            ['id' => $track->id, 'genres' => ['Art Pop'], 'moods' => ['Melancholic']],
+        ]);
+
+        $this->postJson('/ai/classify', ['tracks' => [$track->id], 'retry_empty' => true])
+            ->assertOk()->assertJsonPath('processed', 1);
+
+        $this->assertSame('pending', $empty->fresh()->status);
+        $this->assertSame(['Art Pop'], $empty->fresh()->genres);
+        $this->assertSame(['Melancholic'], $empty->fresh()->moods);
+        $this->assertCount(0, $track->fresh()->tags);
+        Http::assertSentCount(1);
+    }
+
+    public function test_retry_empty_does_not_charge_again_for_nonempty_or_decided_suggestions(): void
+    {
+        config(['openrouter.key' => 'fake-secret']);
+        $one = $this->makeTrack('First');
+        $two = $this->makeTrack('Second');
+        MetadataSuggestion::create([
+            'track_id' => $one->id, 'provider' => 'openrouter',
+            'genres' => ['Rock'], 'moods' => [], 'status' => 'pending',
+        ]);
+        MetadataSuggestion::create([
+            'track_id' => $two->id, 'provider' => 'openrouter',
+            'genres' => [], 'moods' => [], 'status' => 'rejected',
+        ]);
+
+        Http::fake();
+        $this->postJson('/ai/classify', [
+            'tracks' => [$one->id, $two->id], 'retry_empty' => true,
+        ])->assertOk()->assertJsonPath('processed', 0);
+        Http::assertNothingSent();
+    }
+
 }
