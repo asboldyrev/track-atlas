@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Track extends Model
 {
@@ -16,6 +17,11 @@ class Track extends Model
             'file_mtime' => 'integer',
             'is_missing' => 'boolean',
         ];
+    }
+
+    public function metadataSuggestions(): HasMany
+    {
+        return $this->hasMany(MetadataSuggestion::class);
     }
 
     public function tags(): BelongsToMany
