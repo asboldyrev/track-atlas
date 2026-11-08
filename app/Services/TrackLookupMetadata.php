@@ -9,9 +9,11 @@ class TrackLookupMetadata
 {
     public function prepare(?string $artist, string $title): array
     {
-        $originalArtist = trim((string) $artist);
+        // PCRE /u needs valid UTF-8 *before* any regex or preg_quote call.
+        // Convert only the search/request copy; original database tags remain intact.
+        $originalArtist = trim($this->safeUtf8((string) $artist));
         $cleanArtist = $originalArtist;
-        $cleanTitle = trim($title);
+        $cleanTitle = trim($this->safeUtf8($title));
 
         // Remove a trailing bracketed music-video label; leave song versions alone.
         $cleanTitle = preg_replace(
@@ -41,7 +43,22 @@ class TrackLookupMetadata
         $cleanTitle = trim($cleanTitle, " \t\n\r\0\x0B\"'“”");
         return [
             'artist' => $cleanArtist !== '' ? $cleanArtist : $originalArtist,
-            'title' => $cleanTitle !== '' ? $cleanTitle : $title,
+            'title' => $cleanTitle !== '' ? $cleanTitle : $this->safeUtf8($title),
         ];
+    }
+    private function safeUtf8(string $value): string
+    {
+        if (mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        // JSON's substitute flag inserts U+FFFD for each malformed sequence.
+        // Round-tripping a single string avoids modifying mbstring global settings.
+        return json_decode(
+            json_encode($value, JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
     }
 }
