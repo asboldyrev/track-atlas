@@ -28,7 +28,7 @@ class OpenRouterClassificationTest extends TestCase
     private function fakeClassification(array $items): void
     {
         Http::fake([
-            'openrouter.ai/api/v1/chat/completions' => Http::response([
+            'https://openrouter.ai/api/v1/chat/completions' => Http::response([
                 'model' => 'openai/gpt-4o-mini',
                 'choices' => [[
                     'message' => [
