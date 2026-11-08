@@ -17,37 +17,58 @@ class MusicBrainzClient
      */
     public function findGenres(string $title, string $artist): ?array
     {
-        // Strip common video-channel decoration only for search, not from stored tags.
-        $searchTitle = $this->searchTitle($title, $artist);
-        $query = 'recording:"'.$this->escape($searchTitle).'" AND artist:"'.$this->escape($artist).'"';
+        // Prefer the embedded artist tag. Only fall back to an explicit
+        // "Artist - Title" prefix if this looks like a music-video filename.
+        $candidates = [[
+            'title' => $this->searchTitle($title, $artist),
+            'artist' => $artist,
+        ]];
 
-        $search = $this->request('/recording', [
-            'query' => $query,
-            'fmt' => 'json',
-            'limit' => 5,
-        ]);
-
-        $matches = array_values(array_filter($search['recordings'] ?? [], function ($recording) use ($searchTitle, $artist) {
-            if (! is_array($recording) || ($recording['score'] ?? 0) < 90) {
-                return false;
+        if (preg_match('/\\b(?:official\\s+(?:music\\s+)?video|official\\s+audio|lyric\\s+video|lyrics?\\s+video)\\b/iu', $title)) {
+            $withoutAnnotation = preg_replace('/\\s*[\\[(](?:official\\s+(?:music\\s+)?video|official\\s+audio|lyric\\s+video|lyrics?\\s+video)[^\\])]*[\\])]/iu', '', $title);
+            if (preg_match('/^\\s*([^–—-]+?)\\s*[-–—]\\s*(.+?)\\s*$/u', trim($withoutAnnotation), $parts)) {
+                $prefixArtist = trim($parts[1]);
+                $prefixTitle = trim($parts[2]);
+                if ($prefixArtist !== '' && $prefixTitle !== ''
+                    && $this->normalize($prefixArtist) !== $this->normalize($artist)) {
+                    $candidates[] = ['title' => $prefixTitle, 'artist' => $prefixArtist];
+                }
             }
-
-            $credit = implode('', array_map(
-                fn ($item) => is_array($item) ? ($item['name'] ?? '') : (is_string($item) ? $item : ''),
-                $recording['artist-credit'] ?? [],
-            ));
-
-            return $this->normalize($recording['title'] ?? '') === $this->normalize($searchTitle)
-                && $this->normalize($credit) === $this->normalize($artist)
-                && isset($recording['id']);
-        }));
-
-        if (! $matches) {
-            return null;
         }
 
-        usort($matches, fn ($a, $b) => ($b['score'] ?? 0) <=> ($a['score'] ?? 0));
-        $recording = $matches[0];
+        $recording = null;
+        foreach ($candidates as $candidate) {
+            $query = 'recording:"'.$this->escape($candidate['title']).'" AND artist:"'.$this->escape($candidate['artist']).'"';
+            $search = $this->request('/recording', [
+                'query' => $query,
+                'fmt' => 'json',
+                'limit' => 5,
+            ]);
+
+            $matches = array_values(array_filter($search['recordings'] ?? [], function ($item) use ($candidate) {
+                if (! is_array($item) || ($item['score'] ?? 0) < 90 || ! isset($item['id'])) {
+                    return false;
+                }
+
+                $credit = implode('', array_map(
+                    fn ($part) => is_array($part) ? ($part['name'] ?? '') : (is_string($part) ? $part : ''),
+                    $item['artist-credit'] ?? [],
+                ));
+
+                return $this->normalize($item['title'] ?? '') === $this->normalize($candidate['title'])
+                    && $this->normalize($credit) === $this->normalize($candidate['artist']);
+            }));
+
+            if ($matches !== []) {
+                usort($matches, fn ($a, $b) => ($b['score'] ?? 0) <=> ($a['score'] ?? 0));
+                $recording = $matches[0];
+                break;
+            }
+        }
+
+        if ($recording === null) {
+            return null;
+        }
 
         $detail = $this->request('/recording/'.$recording['id'], [
             'inc' => 'genres',
