@@ -114,7 +114,7 @@ class AiClassificationController extends Controller
                             }
                             $tag = Tag::firstOrCreate(['type' => $type, 'slug' => $slug], ['name' => $name]);
                             if (! $locked->track->tags()->where('tags.id', $tag->id)->exists()) {
-                                $locked->track->tags()->attach($tag->id, ['source' => 'manual']);
+                                $locked->track->tags()->attach($tag->id, ['source' => 'openrouter']);
                             }
                         }
                     }
