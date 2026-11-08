@@ -32,25 +32,16 @@ class OpenRouterClassifier
         }
 
         $items = $tracks->map(function (Track $track) {
-            $lookup = $this->lookup->prepare($track->artist, $track->title);
-            $data = [
-                'id' => $track->id,
-                'artist' => $lookup['artist'],
-                'title' => $lookup['title'],
-                'album' => $track->album,
-                'existing_genres' => $track->tags->where('type', 'genre')->pluck('name')->values()->all(),
-            ];
-
-            // Faulty audio tags can contain bytes that are not valid UTF-8.
-            // Log only the affected track ID / field names, never user metadata.
+            // Inspect the raw metadata before the lookup normalizer replaces
+            // malformed bytes. Only field names and track IDs enter the log.
             $invalidFields = [];
             foreach (['artist', 'title', 'album'] as $field) {
-                if (is_string($data[$field]) && ! mb_check_encoding($data[$field], 'UTF-8')) {
+                if (is_string($track->{$field}) && ! mb_check_encoding($track->{$field}, 'UTF-8')) {
                     $invalidFields[] = $field;
                 }
             }
-            foreach ($data['existing_genres'] as $genre) {
-                if (is_string($genre) && ! mb_check_encoding($genre, 'UTF-8')) {
+            foreach ($track->tags->where('type', 'genre') as $tag) {
+                if (is_string($tag->name) && ! mb_check_encoding($tag->name, 'UTF-8')) {
                     $invalidFields[] = 'existing_genres';
                     break;
                 }
@@ -61,6 +52,15 @@ class OpenRouterClassifier
                     'fields' => $invalidFields,
                 ]);
             }
+
+            $lookup = $this->lookup->prepare($track->artist, $track->title);
+            $data = [
+                'id' => $track->id,
+                'artist' => $lookup['artist'],
+                'title' => $lookup['title'],
+                'album' => $track->album,
+                'existing_genres' => $track->tags->where('type', 'genre')->pluck('name')->values()->all(),
+            ];
 
             return $data;
         })->all();
