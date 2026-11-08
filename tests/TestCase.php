@@ -2,7 +2,6 @@
 
 namespace Tests;
 
-use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use RuntimeException;
 
