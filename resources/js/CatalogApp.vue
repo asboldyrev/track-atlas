@@ -25,6 +25,8 @@ const batchTagId = ref('')
 const batchMode = ref('add')
 const aiBusy = ref(false)
 const aiUsage = ref(null)
+const aiProgress = ref(null)
+const aiCancelRequested = ref(false)
 let requestNumber = 0
 let searchTimer
 
@@ -186,21 +188,105 @@ async function applyBatch() {
 }
 
 async function classifySelected(retryEmpty = false) {
-  if (!selected.value.length || selected.value.length > 10) return
-  aiBusy.value = true
-  error.value = ''
-  aiUsage.value = null
-  try {
-    const ids = [...selected.value]
-    const result = await mutate('/ai/classify', 'POST', { tracks: ids, retry_empty: retryEmpty })
-    if (result.usage) aiUsage.value = result.usage
-    notice.value = result.message || ('Предложения получены: ' + result.processed + '. Пропущено ранее обработанных: ' + result.skipped)
-    await loadCatalog()
-  } catch (e) {
-    error.value = e.message
-  } finally {
-    aiBusy.value = false
+  if (aiBusy.value || saving.value || !selected.value.length) return
+
+  const ids = [...new Set(selected.value)]
+  const batches = []
+  for (let index = 0; index < ids.length; index += 10) {
+    batches.push(ids.slice(index, index + 10))
   }
+
+  const action = retryEmpty ? 'повторно проверить пустые предложения для' : 'классифицировать'
+  const confirmed = window.confirm(
+    'Отправить метаданные ' + ids.length + ' треков в OpenRouter и ' + action
+    + ' их? Максимум ' + batches.length + ' платных запросов (по 10 треков). '
+    + 'Уже обработанные треки, не подходящие для выбранного действия, будут пропущены.'
+  )
+  if (!confirmed) return
+
+  aiBusy.value = true
+  aiCancelRequested.value = false
+  aiUsage.value = null
+  aiProgress.value = { completed: 0, total: batches.length, processed: 0, skipped: 0 }
+  error.value = ''
+  notice.value = ''
+
+  let failure = null
+  let hasUsage = false
+  let allCostsProvided = true
+  let totalCost = 0
+  let promptTokens = 0
+  let completionTokens = 0
+  let promptReported = true
+  let completionReported = true
+
+  try {
+    for (const batch of batches) {
+      if (aiCancelRequested.value) break
+
+      try {
+        const result = await mutate('/ai/classify', 'POST', {
+          tracks: batch,
+          retry_empty: retryEmpty === true,
+        })
+        aiProgress.value.processed += result.processed || 0
+        aiProgress.value.skipped += result.skipped || 0
+        if (result.usage) {
+          hasUsage = true
+          const usage = result.usage
+          if (usage.cost_usd === null || usage.cost_usd === undefined) {
+            allCostsProvided = false
+          } else {
+            totalCost += Number(usage.cost_usd)
+          }
+          if (usage.prompt_tokens === null || usage.prompt_tokens === undefined) {
+            promptReported = false
+          } else {
+            promptTokens += Number(usage.prompt_tokens)
+          }
+          if (usage.completion_tokens === null || usage.completion_tokens === undefined) {
+            completionReported = false
+          } else {
+            completionTokens += Number(usage.completion_tokens)
+          }
+        }
+        aiProgress.value.completed += 1
+      } catch (e) {
+        failure = e
+        break
+      }
+    }
+  } finally {
+    const summary = { ...aiProgress.value }
+    const cancelled = aiCancelRequested.value
+    aiUsage.value = hasUsage ? {
+      prompt_tokens: promptReported ? promptTokens : null,
+      completion_tokens: completionReported ? completionTokens : null,
+      cost_usd: allCostsProvided ? totalCost : null,
+    } : null
+
+    // Refresh only after the sequence: loadCatalog clears page selection.
+    await loadCatalog()
+    aiBusy.value = false
+    aiCancelRequested.value = false
+    aiProgress.value = null
+
+    const outcome = 'Пакетов: ' + summary.completed + '/' + summary.total
+      + '. Предложений: ' + summary.processed + '. Пропущено: ' + summary.skipped + '.'
+    if (failure) {
+      error.value = 'Остановка на ошибке: ' + failure.message + '. ' + outcome
+        + ' Результаты успешных пакетов сохранены.'
+    } else if (cancelled) {
+      notice.value = 'Остановлено после текущего запроса. ' + outcome
+    } else {
+      notice.value = 'AI-классификация завершена. ' + outcome
+    }
+  }
+}
+
+function cancelClassification() {
+  // In-flight requests cannot be cancelled safely; stop before the next batch.
+  aiCancelRequested.value = true
 }
 
 async function decideSuggestion(suggestion, decision) {
@@ -339,13 +425,25 @@ onUnmounted(() => {
             <option value="remove">Удалить</option>
           </select>
           <Button size="sm" :disabled="saving || !batchTagId" @click="applyBatch"><CheckCheck :size="16" /> Применить</Button>
-          <Button variant="outline" size="sm" :disabled="saving || aiBusy || selected.length > 10" @click="classifySelected">
+          <Button variant="outline" size="sm"  :disabled="saving || aiBusy" @click="classifySelected(false)">
             <LoaderCircle v-if="aiBusy" :size="16" class="animate-spin" />
-            AI: классифицировать (до 10)
+            AI: классифицировать выбранные
           </Button>
-          <Button variant="outline" size="sm" :disabled="saving || aiBusy || selected.length > 10" @click="classifySelected(true)">
+          <Button variant="outline" size="sm" :disabled="saving || aiBusy" @click="classifySelected(true)">
             Повторить пустые AI-предложения
           </Button>
+        </div>
+
+        <div v-if="aiProgress" class="mb-4 rounded-lg border border-border bg-muted p-3 text-sm" role="status">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span>AI: обработано пакетов {{ aiProgress.completed }} / {{ aiProgress.total }} · треков {{ aiProgress.processed }} · пропущено {{ aiProgress.skipped }}</span>
+            <Button variant="outline" size="sm" :disabled="aiCancelRequested" @click="cancelClassification">
+              {{ aiCancelRequested ? 'Останавливается…' : 'Остановить после текущего запроса' }}
+            </Button>
+          </div>
+          <div class="mt-2 h-2 overflow-hidden rounded-full bg-border">
+            <div class="h-full bg-primary transition-all" :style="{ width: Math.round(aiProgress.completed / aiProgress.total * 100) + '%' }"></div>
+          </div>
         </div>
 
         <p v-if="aiUsage" class="mb-4 text-xs text-muted-foreground">
