@@ -246,15 +246,15 @@ class OpenRouterClassificationTest extends TestCase
 
         // The corrupted values emulate legacy/incorrectly decoded audio tags.
         $track = new Track([
-            'title' => "Bad title \\xC3\\x28",
-            'artist' => "Bad artist \\xC3\\x28",
-            'album' => "Bad album \\xC3\\x28",
+            'title' => "Bad title \xC3\x28",
+            'artist' => "Bad artist \xC3\x28",
+            'album' => "Bad album \xC3\x28",
             'path' => 'invalid-metadata.mp3',
             'size' => 100,
             'file_mtime' => 1,
         ]);
         $track->id = 1234;
-        $genre = new Tag(['type' => 'genre', 'name' => "Bad genre \\xC3\\x28", 'slug' => 'bad']);
+        $genre = new Tag(['type' => 'genre', 'name' => "Bad genre \xC3\x28", 'slug' => 'bad']);
         $track->setRelation('tags', collect([$genre]));
 
         $this->fakeClassification([
