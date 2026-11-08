@@ -61,12 +61,13 @@ class EnrichMusic extends Command
                         'recording_mbid' => $result['recording_mbid'] ?? null,
                         'match_score' => $result['match_score'] ?? null,
                         'genres' => $result['genres'] ?? [],
-                        'status' => 'pending',
+                        'status' => $result === null ? 'unmatched' : (($result['genres'] ?? []) === [] ? 'matched_no_genres' : 'pending'),
                         'error' => null,
                     ]
                 );
                 $list = implode(', ', $result['genres'] ?? []);
-                $this->line('#'.$track->id.' '.$track->artist.' — '.$track->title.': '.($list ?: '(no genres found)'));
+                $description = $result === null ? '(recording not matched)' : ($list ?: '(matched, no recording genres)');
+                $this->line('#'.$track->id.' '.$track->artist.' — '.$track->title.': '.$description);
             } catch (\Throwable $e) {
                 // A failed lookup is not cached: retrying the command is safe.
                 $failed++;
