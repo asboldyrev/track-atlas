@@ -9,7 +9,9 @@
 
 ## Исправление
 
+- Перед вызовом `preg_replace` / `preg_match` в `TrackLookupMetadata` повреждённые строки `artist` и `title` нормализуются в копии для поиска. Это предотвращает ошибку PCRE `UTF-8 error: byte 2 top bits not 0x80` и позволяет очистить типичные подписи `Official Video`.
 - При формировании исходящего JSON используется `JSON_INVALID_UTF8_SUBSTITUTE` вместе с `JSON_THROW_ON_ERROR`: повреждённые байты заменяются стандартным символом Unicode `�` только в передаваемой копии метаданных.
+- Проверка повреждений выполняется **на оригинальных значениях до нормализации**, иначе сообщение о проблеме в `artist`/`title` исчезло бы.
 - В лог записываются только `track_id` и названия полей (`title`, `artist`, `album`, `existing_genres`), где найден некорректный UTF-8. Значения тегов, пути файлов и секреты не логируются.
 - База SQLite, исходные имена, сами музыкальные файлы, URL-фильтры и существующие AI-предложения не меняются.
 - Если символ `�` попадает в название песни, качество распознавания конкретного трека может снизиться. Для окончательной корректировки метаданных нужен отдельный этап.
@@ -20,6 +22,8 @@
 git fetch origin
 git switch fix/openrouter-invalid-utf8
 php -l app/Services/OpenRouterClassifier.php
+php -l app/Services/TrackLookupMetadata.php
+php artisan test --filter=TrackLookupMetadataTest
 php -l tests/Feature/OpenRouterClassificationTest.php
 php artisan test --filter=OpenRouterClassificationTest
 php artisan test
