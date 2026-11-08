@@ -54,6 +54,7 @@ class TrackController extends Controller
         return response()->json([
             'tracks' => $query->orderBy('artist')->orderBy('title')->paginate(30),
             'tags' => Tag::orderBy('name')->get()->groupBy('type'),
+            'tag_translations' => config('tag_translations'),
         ]);
     }
 
@@ -93,6 +94,15 @@ class TrackController extends Controller
         }
 
         return response()->json(['updated' => $tracks->count()]);
+    }
+
+    public function updateTranslation(Request $request, Tag $tag): JsonResponse
+    {
+        $data = $request->validate([
+            'name_ru' => ['present', 'nullable', 'string', 'max:120'],
+        ]);
+        $tag->update(['name_ru' => trim($data['name_ru'] ?? '') ?: null]);
+        return response()->json(['tag' => $tag->fresh()]);
     }
 
     public function storeTag(Request $request, GenreNormalizer $normalizer): JsonResponse
