@@ -215,7 +215,7 @@ async function applyBatch() {
   finally { saving.value = false }
 }
 
-async function classifySelected(retryEmpty = false) {
+async function classifySelected(mode = 'new') {
   if (aiBusy.value || saving.value || !selected.value.length) return
 
   const ids = [...new Set(selected.value)]
@@ -224,7 +224,7 @@ async function classifySelected(retryEmpty = false) {
     batches.push(ids.slice(index, index + 10))
   }
 
-  const action = retryEmpty ? 'повторно проверить пустые предложения для' : 'классифицировать'
+  const action = mode === 'empty' ? 'повторно проверить пустые предложения для' : (mode === 'existing' ? 'повторно классифицировать ожидающие/отклонённые предложения для' : 'классифицировать')
   const confirmed = window.confirm(
     'Отправить метаданные ' + ids.length + ' треков в OpenRouter и ' + action
     + ' их? Максимум ' + batches.length + ' платных запросов (по 10 треков). '
@@ -255,7 +255,8 @@ async function classifySelected(retryEmpty = false) {
       try {
         const result = await mutate('/ai/classify', 'POST', {
           tracks: batch,
-          retry_empty: retryEmpty === true,
+          retry_empty: mode === 'empty',
+          retry_existing: mode === 'existing',
         })
         aiProgress.value.processed += result.processed || 0
         aiProgress.value.skipped += result.skipped || 0
@@ -463,12 +464,15 @@ onUnmounted(() => {
             <option value="remove">Удалить</option>
           </select>
           <Button size="sm" :disabled="saving || !batchTagId" @click="applyBatch"><CheckCheck :size="16" /> Применить</Button>
-          <Button variant="outline" size="sm" :disabled="saving || aiBusy" @click="classifySelected(false)">
+          <Button variant="outline" size="sm" :disabled="saving || aiBusy" @click="classifySelected('new')">
             <LoaderCircle v-if="aiBusy" :size="16" class="animate-spin" />
             AI: классифицировать выбранные
           </Button>
-          <Button variant="outline" size="sm" :disabled="saving || aiBusy" @click="classifySelected(true)">
+          <Button variant="outline" size="sm" :disabled="saving || aiBusy" @click="classifySelected('empty')">
             Повторить пустые AI-предложения
+          </Button>
+          <Button variant="outline" size="sm" :disabled="saving || aiBusy" @click="classifySelected('existing')">
+            Повторить выбранные AI-предложения
           </Button>
         </div>
 
