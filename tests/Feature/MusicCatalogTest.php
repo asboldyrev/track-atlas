@@ -96,7 +96,54 @@ class MusicCatalogTest extends TestCase
         $dark = Tag::create(['type'=>'mood','name'=>'Dark','slug'=>'dark']);
         $a->tags()->attach([$rock->id, $dark->id]);
         $b->tags()->attach([$jazz->id]);
-        $this->get('/?genres[]='.$rock->id.'&genres[]='.$jazz->id.'&moods[]='.$dark->id)
-            ->assertOk()->assertSee('One — A')->assertDontSee('Two — B');
+        $this->getJson('/catalog?genres[]='.$rock->id.'&genres[]='.$jazz->id.'&moods[]='.$dark->id)
+            ->assertOk()
+            ->assertJsonPath('tracks.total', 1)
+            ->assertJsonPath('tracks.data.0.artist', 'One')
+            ->assertJsonPath('tracks.data.0.title', 'A');
     }
+    public function test_catalog_shell_loads_and_url_filters_are_applied_by_the_api(): void
+    {
+        $track = Track::create(['path'=>'a.mp3','title'=>'Nightcall','artist'=>'Kavinsky','size'=>1,'file_mtime'=>1]);
+        $genre = Tag::create(['type'=>'genre','name'=>'Synthwave','slug'=>'synthwave']);
+        $track->tags()->attach($genre->id);
+        $this->get('/?genres[]='.$genre->id)->assertOk()->assertSee('id="app"', false);
+        $this->getJson('/catalog?genres[]='.$genre->id)
+            ->assertOk()->assertJsonPath('tracks.total', 1);
+        $this->getJson('/catalog?untagged=genre')
+            ->assertOk()->assertJsonPath('tracks.total', 0);
+    }
+
+    public function test_batch_tagging_modifies_only_selected_tracks(): void
+    {
+        $first = Track::create(['path'=>'one.mp3','title'=>'One','size'=>1,'file_mtime'=>1]);
+        $second = Track::create(['path'=>'two.mp3','title'=>'Two','size'=>1,'file_mtime'=>1]);
+        $tag = Tag::create(['type'=>'mood','name'=>'Dark','slug'=>'dark']);
+
+        $this->postJson('/tracks/batch-tags', [
+            'tracks' => [$first->id], 'tags' => [$tag->id], 'mode' => 'add',
+        ])->assertOk()->assertJsonPath('updated', 1);
+
+        $this->assertTrue($first->fresh()->tags->contains($tag->id));
+        $this->assertFalse($second->fresh()->tags->contains($tag->id));
+
+        $this->postJson('/tracks/batch-tags', [
+            'tracks' => [$first->id], 'tags' => [$tag->id], 'mode' => 'remove',
+        ])->assertOk();
+
+        $this->assertCount(0, $first->fresh()->tags);
+    }
+
+    public function test_manual_edit_can_clear_all_tags(): void
+    {
+        $track = Track::create(['path'=>'one.mp3','title'=>'One','size'=>1,'file_mtime'=>1]);
+        $tag = Tag::create(['type'=>'genre','name'=>'Rock','slug'=>'rock']);
+        $track->tags()->attach($tag->id);
+
+        $this->putJson('/tracks/'.$track->id.'/tags', ['tags'=>[]])
+            ->assertOk()->assertJsonPath('ok', true);
+
+        $this->assertCount(0, $track->fresh()->tags);
+    }
+
 }
