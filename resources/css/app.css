@@ -1,9 +1,44 @@
 @import 'tailwindcss';
 
-@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../js/**/*.{vue,js,ts}';
 @source '../../storage/framework/views/*.php';
 
-@theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+@theme inline {
+  --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
 }
+:root {
+  color-scheme: light;
+  --background: #faf9f6;
+  --foreground: #242523;
+  --card: #ffffff;
+  --card-foreground: #242523;
+  --primary: #343b35;
+  --primary-foreground: #ffffff;
+  --secondary: #f2f1ec;
+  --secondary-foreground: #3f443f;
+  --muted: #f5f4f0;
+  --muted-foreground: #747772;
+  --accent: #ebeae5;
+  --accent-foreground: #252923;
+  --border: #e4e5df;
+  --input: #d9dbd4;
+  --ring: #8da18b;
+  --destructive: #c13f38;
+}
+body { margin: 0; background: var(--background); color: var(--foreground); font-family: var(--font-sans); }
