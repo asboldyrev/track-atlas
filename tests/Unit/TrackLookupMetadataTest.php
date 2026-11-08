@@ -41,4 +41,18 @@ class TrackLookupMetadataTest extends TestCase
             $lookup->prepare('Artist', 'Song - Part Two'),
         );
     }
+    public function test_malformed_utf8_is_replaced_before_unicode_regex_processing(): void
+    {
+        $lookup = app(TrackLookupMetadata::class);
+        $actual = $lookup->prepare(
+            "AURORA \xC3\x28",
+            "AURORA \xC3\x28 - The Seed (Official Music Video)",
+        );
+
+        $this->assertTrue(mb_check_encoding($actual['artist'], 'UTF-8'));
+        $this->assertTrue(mb_check_encoding($actual['title'], 'UTF-8'));
+        $this->assertStringContainsString('�', $actual['artist']);
+        $this->assertSame('The Seed', $actual['title']);
+    }
+
 }

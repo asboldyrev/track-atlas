@@ -240,4 +240,44 @@ class OpenRouterClassificationTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_malformed_audio_metadata_is_safely_encoded_before_openrouter_request(): void
+    {
+        config(['openrouter.key' => 'fake-secret', 'openrouter.model' => 'openai/gpt-4o-mini']);
+
+        // The corrupted values emulate legacy/incorrectly decoded audio tags.
+        $track = new Track([
+            'title' => "Bad title \xC3\x28",
+            'artist' => "Bad artist \xC3\x28",
+            'album' => "Bad album \xC3\x28",
+            'path' => 'invalid-metadata.mp3',
+            'size' => 100,
+            'file_mtime' => 1,
+        ]);
+        $track->id = 1234;
+        $genre = new Tag(['type' => 'genre', 'name' => "Bad genre \xC3\x28", 'slug' => 'bad']);
+        $track->setRelation('tags', collect([$genre]));
+
+        $this->fakeClassification([
+            ['id' => $track->id, 'genres' => ['Electronic'], 'moods' => ['Calm']],
+        ]);
+
+        $result = app(\App\Services\OpenRouterClassifier::class)->classify(collect([$track]));
+
+        $this->assertSame(['Electronic'], $result['tracks'][$track->id]['genres']);
+        Http::assertSentCount(1);
+        Http::assertSent(function ($request) {
+            $payload = $request->data();
+            $input = json_decode($payload['messages'][1]['content'], true, 512, JSON_THROW_ON_ERROR);
+            $item = $input['tracks'][0];
+
+            $this->assertTrue(mb_check_encoding($payload['messages'][1]['content'], 'UTF-8'));
+            $this->assertStringContainsString('�', $item['title']);
+            $this->assertStringContainsString('�', $item['artist']);
+            $this->assertStringContainsString('�', $item['album']);
+            $this->assertStringContainsString('�', $item['existing_genres'][0]);
+
+            return true;
+        });
+    }
+
 }

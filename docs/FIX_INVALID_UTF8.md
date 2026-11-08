@@ -1,0 +1,36 @@
+# Исправление ошибок UTF-8 в AI-классификации
+
+## Симптом
+
+При пакетной классификации интерфейс показывает:
+`Остановка на ошибке: Не удалось получить классификацию OpenRouter. Пакетов: 0/3`.
+
+В локальном Laravel-логе за 2026-11-08 ошибка `JsonException: Malformed UTF-8 characters, possibly incorrectly encoded` в `app/Services/OpenRouterClassifier.php` при `json_encode` входных метаданных. Это ошибка сериализации **до запроса к OpenRouter**, а не ответ провайдера.
+
+## Исправление
+
+- Перед вызовом `preg_replace` / `preg_match` в `TrackLookupMetadata` повреждённые строки `artist` и `title` нормализуются в копии для поиска. Это предотвращает ошибку PCRE `UTF-8 error: byte 2 top bits not 0x80` и позволяет очистить типичные подписи `Official Video`.
+- При формировании исходящего JSON используется `JSON_INVALID_UTF8_SUBSTITUTE` вместе с `JSON_THROW_ON_ERROR`: повреждённые байты заменяются стандартным символом Unicode `�` только в передаваемой копии метаданных.
+- Проверка повреждений выполняется **на оригинальных значениях до нормализации**, иначе сообщение о проблеме в `artist`/`title` исчезло бы.
+- В лог записываются только `track_id` и названия полей (`title`, `artist`, `album`, `existing_genres`), где найден некорректный UTF-8. Значения тегов, пути файлов и секреты не логируются.
+- База SQLite, исходные имена, сами музыкальные файлы, URL-фильтры и существующие AI-предложения не меняются.
+- Если символ `�` попадает в название песни, качество распознавания конкретного трека может снизиться. Для окончательной корректировки метаданных нужен отдельный этап.
+
+## Проверка
+
+```bash
+git fetch origin
+git switch fix/openrouter-invalid-utf8
+php -l app/Services/OpenRouterClassifier.php
+php -l app/Services/TrackLookupMetadata.php
+php artisan test --filter=TrackLookupMetadataTest
+php -l tests/Feature/OpenRouterClassificationTest.php
+php artisan test --filter=OpenRouterClassificationTest
+php artisan test
+```
+
+Тест моделирует повреждённую кодировку в названии, исполнителе, альбоме и жанре, проверяя, что JSON корректен и API вызывается с безопасной UTF-8 последовательностью.
+
+После зелёных тестов можно повторить выбранную ранее неуспешную партию в браузере. Это **реальный платный вызов** OpenRouter; прежняя ошибка произошла до отправки, но успешный повтор будет платным. Проверьте при необходимости лог `storage/logs/laravel.log` на `OpenRouter input contains invalid UTF-8`, чтобы узнать ID затронутых треков. Не прикладывайте логи с API-ключами.
+
+PR исправляет только причину ошибки. Улучшения UI из открытого PR #6 не входят сюда.
