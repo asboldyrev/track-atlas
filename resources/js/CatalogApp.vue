@@ -11,6 +11,9 @@ const filters = reactive({ search: '', genres: [], moods: [], untagged: '', page
 const rows = ref([])
 const genreTags = ref([])
 const moodTags = ref([])
+const tagTranslations = ref({ genre: {}, mood: {} })
+const translationTagId = ref('')
+const translationValue = ref('')
 const pagination = reactive({ total: 0, current_page: 1, last_page: 1 })
 const loading = ref(false)
 const saving = ref(false)
@@ -31,6 +34,30 @@ let requestNumber = 0
 let searchTimer
 
 const allTags = computed(() => [...genreTags.value, ...moodTags.value])
+function translatedLabel(type, name, override = null) {
+  const ru = override?.trim() || tagTranslations.value[type]?.[name.trim().toLocaleLowerCase()] || ''
+  return ru && ru.toLocaleLowerCase() !== name.toLocaleLowerCase() ? ru + ' (' + name + ')' : name
+}
+function tagLabel(tag) {
+  return translatedLabel(tag.type, tag.name, tag.name_ru)
+}
+function selectedTranslationTagChanged() {
+  const tag = allTags.value.find(item => item.id === Number(translationTagId.value))
+  translationValue.value = tag?.name_ru || ''
+}
+async function saveTranslation() {
+  const tag = allTags.value.find(item => item.id === Number(translationTagId.value))
+  if (!tag) return
+  saving.value = true
+  error.value = ''
+  try {
+    await mutate('/tags/' + tag.id + '/translation', 'PUT', { name_ru: translationValue.value.trim() || null })
+    notice.value = 'Перевод сохранён'
+    await loadCatalog()
+  } catch (e) { error.value = e.message }
+  finally { saving.value = false }
+}
+
 const selectedTracks = computed(() => rows.value.filter(row => selected.value.includes(row.id)))
 
 function readUrl() {
@@ -107,6 +134,7 @@ async function loadCatalog() {
     })
     genreTags.value = data.tags.genre || []
     moodTags.value = data.tags.mood || []
+    tagTranslations.value = data.tag_translations || { genre: {}, mood: {} }
     selected.value = []
   } catch (e) {
     if (current === requestNumber) error.value = e.message
@@ -360,7 +388,7 @@ onUnmounted(() => {
           <div class="max-h-56 space-y-2 overflow-y-auto pr-1">
             <label v-for="tag in genreTags" :key="tag.id" class="flex cursor-pointer items-center gap-2 text-sm">
               <Checkbox :model-value="filters.genres.includes(tag.id)" @update:model-value="toggleFilter('genres', tag.id, $event)" />
-              <span>{{ tag.name }}</span>
+              <span>{{ tagLabel(tag) }}</span>
             </label>
           </div>
         </fieldset>
@@ -371,7 +399,7 @@ onUnmounted(() => {
           <div class="max-h-56 space-y-2 overflow-y-auto pr-1">
             <label v-for="tag in moodTags" :key="tag.id" class="flex cursor-pointer items-center gap-2 text-sm">
               <Checkbox :model-value="filters.moods.includes(tag.id)" @update:model-value="toggleFilter('moods', tag.id, $event)" />
-              <span>{{ tag.name }}</span>
+              <span>{{ tagLabel(tag) }}</span>
             </label>
           </div>
         </fieldset>
@@ -394,6 +422,16 @@ onUnmounted(() => {
           </select>
           <Input v-model="newTagName" placeholder="Название" class="mb-2" />
           <Button size="sm" class="w-full" :disabled="saving || !newTagName.trim()" type="submit"><Plus :size="15" /> Добавить</Button>
+        </form>
+        <form class="mt-5 border-t border-border pt-5" @submit.prevent="saveTranslation">
+          <h3 class="mb-2 text-sm font-semibold">Переводы категорий</h3>
+          <p class="mb-3 text-xs text-muted-foreground">Русское название можно изменить. Оригинал и фильтры сохраняются.</p>
+          <select v-model="translationTagId" class="mb-2 h-9 w-full rounded-md border border-input bg-background px-2 text-sm" @change="selectedTranslationTagChanged">
+            <option value="">Выбрать категорию</option>
+            <option v-for="tag in allTags" :key="tag.id" :value="tag.id">{{ tagLabel(tag) }}</option>
+          </select>
+          <Input v-model="translationValue" :disabled="!translationTagId" placeholder="Перевод на русский" class="mb-2" />
+          <Button type="submit" size="sm" variant="outline" class="w-full" :disabled="saving || !translationTagId">Сохранить перевод</Button>
         </form>
       </Card>
 
@@ -418,7 +456,7 @@ onUnmounted(() => {
           <Tags :size="18" class="text-muted-foreground" />
           <select v-model="batchTagId" aria-label="Категория для массового действия" class="h-9 min-w-40 rounded-md border border-input bg-background px-2 text-sm">
             <option value="">Выбрать категорию</option>
-            <option v-for="tag in allTags" :key="tag.id" :value="tag.id">{{ tag.name }}</option>
+            <option v-for="tag in allTags" :key="tag.id" :value="tag.id">{{ tagLabel(tag) }}</option>
           </select>
           <select v-model="batchMode" aria-label="Массовое действие" class="h-9 rounded-md border border-input bg-background px-2 text-sm">
             <option value="add">Добавить</option>
@@ -463,14 +501,14 @@ onUnmounted(() => {
               <h3 class="break-words text-sm font-semibold">{{ track.artist ? track.artist + ' — ' : '' }}{{ track.title }}</h3>
               <p v-if="track.album" class="mt-1 text-xs text-muted-foreground">{{ track.album }}</p>
               <div class="mt-2 flex flex-wrap gap-1.5">
-                <Badge v-for="tag in track.tags" :key="tag.id" :variant="tag.type === 'mood' ? 'outline' : 'secondary'">{{ tag.name }}</Badge>
+                <Badge v-for="tag in track.tags" :key="tag.id" :variant="tag.type === 'mood' ? 'outline' : 'secondary'">{{ tagLabel(tag) }}</Badge>
                 <span v-if="!track.tags.length" class="text-xs text-muted-foreground">Без категорий</span>
               </div>
               <div v-for="suggestion in (track.metadata_suggestions || []).filter(s => s.status === 'pending')" :key="suggestion.id" class="mt-3 rounded-lg border border-border bg-muted/60 p-3 text-xs">
                 <div class="mb-2 font-semibold">Предложение OpenRouter <span class="font-normal text-muted-foreground">({{ suggestion.model }})</span></div>
                 <div class="mb-2 flex flex-wrap gap-1">
-                  <Badge v-for="genre in suggestion.genres || []" :key="'g' + genre" variant="secondary">{{ genre }}</Badge>
-                  <Badge v-for="mood in suggestion.moods || []" :key="'m' + mood" variant="outline">{{ mood }}</Badge>
+                  <Badge v-for="genre in suggestion.genres || []" :key="'g' + genre" variant="secondary">{{ translatedLabel('genre', genre) }}</Badge>
+                  <Badge v-for="mood in suggestion.moods || []" :key="'m' + mood" variant="outline">{{ translatedLabel('mood', mood) }}</Badge>
                   <span v-if="!(suggestion.genres || []).length && !(suggestion.moods || []).length" class="text-muted-foreground">Модель не смогла определить категории</span>
                 </div>
                 <div class="flex gap-2">
@@ -490,7 +528,7 @@ onUnmounted(() => {
               <div class="flex flex-wrap gap-x-4 gap-y-2">
                 <label v-for="tag in group" :key="tag.id" class="flex cursor-pointer items-center gap-2 text-sm">
                   <Checkbox :model-value="editingTags.includes(tag.id)" @update:model-value="toggleEditTag(tag.id, $event)" />
-                  {{ tag.name }}
+                  {{ tagLabel(tag) }}
                 </label>
               </div>
             </div>
