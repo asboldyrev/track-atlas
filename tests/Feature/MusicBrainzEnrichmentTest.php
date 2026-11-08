@@ -126,4 +126,42 @@ class MusicBrainzEnrichmentTest extends TestCase
         Http::assertSentCount(3);
     }
 
+    public function test_video_artist_prefix_can_identify_recording_when_channel_artist_is_wrong(): void
+    {
+        $track = Track::create([
+            'path' => 'eminem.mp3',
+            'title' => 'Eminem - Mockingbird [Official Music Video]',
+            'artist' => 'EminemMusic',
+            'size' => 100, 'file_mtime' => 1,
+        ]);
+
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), '/recording?')) {
+                $query = urldecode($request->url());
+                if (str_contains($query, 'artist:"Eminem"')
+                    && str_contains($query, 'recording:"Mockingbird"')) {
+                    return Http::response(['recordings' => [[
+                        'id' => '55555555-5555-4555-8555-555555555555',
+                        'title' => 'Mockingbird',
+                        'score' => 100,
+                        'artist-credit' => [['name' => 'Eminem']],
+                    ]]]);
+                }
+
+                return Http::response(['recordings' => []]);
+            }
+
+            return Http::response(['genres' => []]);
+        });
+
+        $this->artisan('music:enrich', ['--track' => (string) $track->id])->assertExitCode(0);
+
+        $result = MetadataSuggestion::firstOrFail();
+        $this->assertSame('matched_no_genres', $result->status);
+        $this->assertSame('55555555-5555-4555-8555-555555555555', $result->recording_mbid);
+        $this->assertSame('EminemMusic', $track->fresh()->artist);
+        $this->assertSame('Eminem - Mockingbird [Official Music Video]', $track->fresh()->title);
+        Http::assertSentCount(3);
+    }
+
 }
