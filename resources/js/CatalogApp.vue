@@ -425,7 +425,7 @@ onUnmounted(() => {
             <option value="remove">Удалить</option>
           </select>
           <Button size="sm" :disabled="saving || !batchTagId" @click="applyBatch"><CheckCheck :size="16" /> Применить</Button>
-          <Button variant="outline" size="sm"  :disabled="saving || aiBusy" @click="classifySelected(false)">
+          <Button variant="outline" size="sm" :disabled="saving || aiBusy" @click="classifySelected(false)">
             <LoaderCircle v-if="aiBusy" :size="16" class="animate-spin" />
             AI: классифицировать выбранные
           </Button>
