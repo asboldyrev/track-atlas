@@ -207,4 +207,37 @@ class OpenRouterClassificationTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_explicit_false_retry_flag_is_valid_for_new_classification(): void
+    {
+        config(['openrouter.key' => 'fake-secret']);
+        $track = $this->makeTrack('Fresh');
+
+        $this->fakeClassification([
+            ['id' => $track->id, 'genres' => ['Pop'], 'moods' => ['Energetic']],
+        ]);
+
+        $this->postJson('/ai/classify', [
+            'tracks' => [$track->id],
+            'retry_empty' => false,
+        ])->assertOk()->assertJsonPath('processed', 1);
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_single_api_request_cannot_include_more_than_ten_tracks(): void
+    {
+        $tracks = [];
+        for ($index = 1; $index <= 11; $index++) {
+            $tracks[] = $this->makeTrack('Sample '.$index)->id;
+        }
+
+        Http::fake();
+        $this->postJson('/ai/classify', [
+            'tracks' => $tracks,
+            'retry_empty' => false,
+        ])->assertUnprocessable();
+
+        Http::assertNothingSent();
+    }
+
 }
