@@ -280,4 +280,58 @@ class OpenRouterClassificationTest extends TestCase
         });
     }
 
+    public function test_explicit_retry_replaces_nonempty_pending_suggestion_but_not_accepted(): void
+    {
+        config(['openrouter.key' => 'fake-secret']);
+        $pending = $this->makeTrack('Previously Incorrect');
+        $accepted = $this->makeTrack('Already Accepted');
+        MetadataSuggestion::create([
+            'track_id' => $pending->id,
+            'provider' => 'openrouter',
+            'genres' => ['Incorrect'],
+            'moods' => ['Dark'],
+            'status' => 'pending',
+        ]);
+        MetadataSuggestion::create([
+            'track_id' => $accepted->id,
+            'provider' => 'openrouter',
+            'genres' => ['Rock'],
+            'moods' => ['Energetic'],
+            'status' => 'accepted',
+        ]);
+
+        $this->fakeClassification([
+            ['id' => $pending->id, 'genres' => ['Industrial Metal'], 'moods' => ['Energetic']],
+        ]);
+
+        $this->postJson('/ai/classify', [
+            'tracks' => [$pending->id, $accepted->id],
+            'retry_existing' => true,
+        ])->assertOk()->assertJsonPath('processed', 1)->assertJsonPath('skipped', 1);
+
+        $this->assertSame(['Industrial Metal'], $pending->fresh()->metadataSuggestions->first()->genres);
+        $this->assertSame('accepted', $accepted->fresh()->metadataSuggestions->first()->status);
+        $this->assertSame(['Rock'], $accepted->fresh()->metadataSuggestions->first()->genres);
+        Http::assertSentCount(1);
+    }
+
+    public function test_existing_proposal_is_skipped_without_explicit_retry(): void
+    {
+        config(['openrouter.key' => 'fake-secret']);
+        $track = $this->makeTrack('Old Suggestion');
+        MetadataSuggestion::create([
+            'track_id' => $track->id,
+            'provider' => 'openrouter',
+            'genres' => ['Rock'],
+            'moods' => [],
+            'status' => 'pending',
+        ]);
+        Http::fake();
+        $this->postJson('/ai/classify', [
+            'tracks' => [$track->id],
+            'retry_existing' => false,
+        ])->assertOk()->assertJsonPath('processed', 0)->assertJsonPath('skipped', 1);
+        Http::assertNothingSent();
+    }
+
 }

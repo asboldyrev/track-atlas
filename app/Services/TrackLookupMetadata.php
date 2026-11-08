@@ -22,6 +22,19 @@ class TrackLookupMetadata
             $cleanTitle,
         ) ?? $cleanTitle;
 
+        // Video quality suffixes often follow downloaded video titles without
+        // brackets: e.g. "PAIN - Shut Your Mouth HQ HD 4K". Only treat a
+        // multi-token quality suffix as decoration when a title contains an
+        // explicit "Artist - Song" prefix. This is for lookup only.
+        $hasVideoQualitySuffix = false;
+        if (preg_match('/^\\s*[^–—-]+?\\s*[-–—]\\s*.+?\\s+(?:(?:HQ|HD|4K|8K|1080P|720P)\\s*){2,}$/iu', $cleanTitle)) {
+            $withoutQuality = preg_replace('/\\s+(?:(?:HQ|HD|4K|8K|1080P|720P)\\s*){2,}$/iu', '', $cleanTitle);
+            if (is_string($withoutQuality) && trim($withoutQuality) !== '') {
+                $cleanTitle = trim($withoutQuality);
+                $hasVideoQualitySuffix = true;
+            }
+        }
+
         // Artist already present in ID3 and repeated at the beginning of Title.
         if ($cleanArtist !== '') {
             $prefix = preg_quote($cleanArtist, '/');
@@ -30,7 +43,8 @@ class TrackLookupMetadata
 
         // A title originating from a video can have a channel as artist.
         // Only use the embedded "Artist - Title" when an obvious video annotation exists.
-        $isVideo = preg_match('/\\b(?:official\\s+(?:music\\s+)?video|official\\s+audio|lyric\\s+video|lyrics?\\s+video)\\b/iu', $title) === 1;
+        $isVideo = $hasVideoQualitySuffix
+            || preg_match('/\\b(?:official\\s+(?:music\\s+)?video|official\\s+audio|lyric\\s+video|lyrics?\\s+video)\\b/iu', $title) === 1;
         if ($isVideo && preg_match('/^\\s*([^–—-]+?)\\s*[-–—]\\s*(.+?)\\s*$/u', $cleanTitle, $parts)) {
             $embeddedArtist = trim($parts[1]);
             $embeddedTitle = trim($parts[2]);

@@ -55,4 +55,32 @@ class TrackLookupMetadataTest extends TestCase
         $this->assertSame('The Seed', $actual['title']);
     }
 
+    public function test_video_quality_suffix_recovers_real_artist_from_channel_name(): void
+    {
+        $lookup = app(TrackLookupMetadata::class);
+
+        $this->assertSame(
+            ['artist' => 'PAIN', 'title' => 'Shut Your Mouth'],
+            $lookup->prepare('HDFactory', 'PAIN - Shut Your Mouth HQ HD 4K'),
+        );
+        $this->assertSame(
+            ['artist' => 'Eminem', 'title' => 'Mockingbird'],
+            $lookup->prepare('EminemMusic', 'Eminem - Mockingbird [Official Music Video]'),
+        );
+    }
+
+    public function test_quality_words_are_not_stripped_without_explicit_video_evidence(): void
+    {
+        $lookup = app(TrackLookupMetadata::class);
+
+        $this->assertSame(
+            ['artist' => 'Band', 'title' => 'Song HD'],
+            $lookup->prepare('Band', 'Song HD'),
+        );
+        $this->assertSame(
+            ['artist' => 'Channel', 'title' => 'Song - Part Two'],
+            $lookup->prepare('Channel', 'Song - Part Two'),
+        );
+    }
+
 }
