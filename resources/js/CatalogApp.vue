@@ -11,6 +11,9 @@ const filters = reactive({ search: '', genres: [], moods: [], untagged: '', page
 const rows = ref([])
 const genreTags = ref([])
 const moodTags = ref([])
+const tagTranslations = ref({ genre: {}, mood: {} })
+const translationTagId = ref('')
+const translationValue = ref('')
 const pagination = reactive({ total: 0, current_page: 1, last_page: 1 })
 const loading = ref(false)
 const saving = ref(false)
@@ -23,10 +26,38 @@ const newTagName = ref('')
 const newTagType = ref('genre')
 const batchTagId = ref('')
 const batchMode = ref('add')
+const aiBusy = ref(false)
+const aiUsage = ref(null)
+const aiProgress = ref(null)
+const aiCancelRequested = ref(false)
 let requestNumber = 0
 let searchTimer
 
 const allTags = computed(() => [...genreTags.value, ...moodTags.value])
+function translatedLabel(type, name, override = null) {
+  const ru = override?.trim() || tagTranslations.value[type]?.[name.trim().toLocaleLowerCase()] || ''
+  return ru && ru.toLocaleLowerCase() !== name.toLocaleLowerCase() ? ru + ' (' + name + ')' : name
+}
+function tagLabel(tag) {
+  return translatedLabel(tag.type, tag.name, tag.name_ru)
+}
+function selectedTranslationTagChanged() {
+  const tag = allTags.value.find(item => item.id === Number(translationTagId.value))
+  translationValue.value = tag?.name_ru || ''
+}
+async function saveTranslation() {
+  const tag = allTags.value.find(item => item.id === Number(translationTagId.value))
+  if (!tag) return
+  saving.value = true
+  error.value = ''
+  try {
+    await mutate('/tags/' + tag.id + '/translation', 'PUT', { name_ru: translationValue.value.trim() || null })
+    notice.value = 'Перевод сохранён'
+    await loadCatalog()
+  } catch (e) { error.value = e.message }
+  finally { saving.value = false }
+}
+
 const selectedTracks = computed(() => rows.value.filter(row => selected.value.includes(row.id)))
 
 function readUrl() {
@@ -103,6 +134,7 @@ async function loadCatalog() {
     })
     genreTags.value = data.tags.genre || []
     moodTags.value = data.tags.mood || []
+    tagTranslations.value = data.tag_translations || { genre: {}, mood: {} }
     selected.value = []
   } catch (e) {
     if (current === requestNumber) error.value = e.message
@@ -183,6 +215,122 @@ async function applyBatch() {
   finally { saving.value = false }
 }
 
+async function classifySelected(retryEmpty = false) {
+  if (aiBusy.value || saving.value || !selected.value.length) return
+
+  const ids = [...new Set(selected.value)]
+  const batches = []
+  for (let index = 0; index < ids.length; index += 10) {
+    batches.push(ids.slice(index, index + 10))
+  }
+
+  const action = retryEmpty ? 'повторно проверить пустые предложения для' : 'классифицировать'
+  const confirmed = window.confirm(
+    'Отправить метаданные ' + ids.length + ' треков в OpenRouter и ' + action
+    + ' их? Максимум ' + batches.length + ' платных запросов (по 10 треков). '
+    + 'Уже обработанные треки, не подходящие для выбранного действия, будут пропущены.'
+  )
+  if (!confirmed) return
+
+  aiBusy.value = true
+  aiCancelRequested.value = false
+  aiUsage.value = null
+  aiProgress.value = { completed: 0, total: batches.length, processed: 0, skipped: 0 }
+  error.value = ''
+  notice.value = ''
+
+  let failure = null
+  let hasUsage = false
+  let allCostsProvided = true
+  let totalCost = 0
+  let promptTokens = 0
+  let completionTokens = 0
+  let promptReported = true
+  let completionReported = true
+
+  try {
+    for (const batch of batches) {
+      if (aiCancelRequested.value) break
+
+      try {
+        const result = await mutate('/ai/classify', 'POST', {
+          tracks: batch,
+          retry_empty: retryEmpty === true,
+        })
+        aiProgress.value.processed += result.processed || 0
+        aiProgress.value.skipped += result.skipped || 0
+        if (result.usage) {
+          hasUsage = true
+          const usage = result.usage
+          if (usage.cost_usd === null || usage.cost_usd === undefined) {
+            allCostsProvided = false
+          } else {
+            totalCost += Number(usage.cost_usd)
+          }
+          if (usage.prompt_tokens === null || usage.prompt_tokens === undefined) {
+            promptReported = false
+          } else {
+            promptTokens += Number(usage.prompt_tokens)
+          }
+          if (usage.completion_tokens === null || usage.completion_tokens === undefined) {
+            completionReported = false
+          } else {
+            completionTokens += Number(usage.completion_tokens)
+          }
+        }
+        aiProgress.value.completed += 1
+      } catch (e) {
+        failure = e
+        break
+      }
+    }
+  } finally {
+    const summary = { ...aiProgress.value }
+    const cancelled = aiCancelRequested.value
+    aiUsage.value = hasUsage ? {
+      prompt_tokens: promptReported ? promptTokens : null,
+      completion_tokens: completionReported ? completionTokens : null,
+      cost_usd: allCostsProvided ? totalCost : null,
+    } : null
+
+    // Refresh only after the sequence: loadCatalog clears page selection.
+    await loadCatalog()
+    aiBusy.value = false
+    aiCancelRequested.value = false
+    aiProgress.value = null
+
+    const outcome = 'Пакетов: ' + summary.completed + '/' + summary.total
+      + '. Предложений: ' + summary.processed + '. Пропущено: ' + summary.skipped + '.'
+    if (failure) {
+      error.value = 'Остановка на ошибке: ' + failure.message + '. ' + outcome
+        + ' Результаты успешных пакетов сохранены.'
+    } else if (cancelled) {
+      notice.value = 'Остановлено после текущего запроса. ' + outcome
+    } else {
+      notice.value = 'AI-классификация завершена. ' + outcome
+    }
+  }
+}
+
+function cancelClassification() {
+  // In-flight requests cannot be cancelled safely; stop before the next batch.
+  aiCancelRequested.value = true
+}
+
+async function decideSuggestion(suggestion, decision) {
+  saving.value = true
+  error.value = ''
+  try {
+    await mutate('/ai/suggestions/' + suggestion.id, 'PUT', { decision })
+    notice.value = decision === 'accept' ? 'Предложенные теги применены' : 'Предложение отклонено'
+    await loadCatalog()
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    saving.value = false
+  }
+}
+
 function backNavigation() {
   clearTimeout(searchTimer)
   readUrl()
@@ -240,7 +388,7 @@ onUnmounted(() => {
           <div class="max-h-56 space-y-2 overflow-y-auto pr-1">
             <label v-for="tag in genreTags" :key="tag.id" class="flex cursor-pointer items-center gap-2 text-sm">
               <Checkbox :model-value="filters.genres.includes(tag.id)" @update:model-value="toggleFilter('genres', tag.id, $event)" />
-              <span>{{ tag.name }}</span>
+              <span>{{ tagLabel(tag) }}</span>
             </label>
           </div>
         </fieldset>
@@ -251,7 +399,7 @@ onUnmounted(() => {
           <div class="max-h-56 space-y-2 overflow-y-auto pr-1">
             <label v-for="tag in moodTags" :key="tag.id" class="flex cursor-pointer items-center gap-2 text-sm">
               <Checkbox :model-value="filters.moods.includes(tag.id)" @update:model-value="toggleFilter('moods', tag.id, $event)" />
-              <span>{{ tag.name }}</span>
+              <span>{{ tagLabel(tag) }}</span>
             </label>
           </div>
         </fieldset>
@@ -274,6 +422,16 @@ onUnmounted(() => {
           </select>
           <Input v-model="newTagName" placeholder="Название" class="mb-2" />
           <Button size="sm" class="w-full" :disabled="saving || !newTagName.trim()" type="submit"><Plus :size="15" /> Добавить</Button>
+        </form>
+        <form class="mt-5 border-t border-border pt-5" @submit.prevent="saveTranslation">
+          <h3 class="mb-2 text-sm font-semibold">Переводы категорий</h3>
+          <p class="mb-3 text-xs text-muted-foreground">Русское название можно изменить. Оригинал и фильтры сохраняются.</p>
+          <select v-model="translationTagId" class="mb-2 h-9 w-full rounded-md border border-input bg-background px-2 text-sm" @change="selectedTranslationTagChanged">
+            <option value="">Выбрать категорию</option>
+            <option v-for="tag in allTags" :key="tag.id" :value="tag.id">{{ tagLabel(tag) }}</option>
+          </select>
+          <Input v-model="translationValue" :disabled="!translationTagId" placeholder="Перевод на русский" class="mb-2" />
+          <Button type="submit" size="sm" variant="outline" class="w-full" :disabled="saving || !translationTagId">Сохранить перевод</Button>
         </form>
       </Card>
 
@@ -298,14 +456,39 @@ onUnmounted(() => {
           <Tags :size="18" class="text-muted-foreground" />
           <select v-model="batchTagId" aria-label="Категория для массового действия" class="h-9 min-w-40 rounded-md border border-input bg-background px-2 text-sm">
             <option value="">Выбрать категорию</option>
-            <option v-for="tag in allTags" :key="tag.id" :value="tag.id">{{ tag.name }}</option>
+            <option v-for="tag in allTags" :key="tag.id" :value="tag.id">{{ tagLabel(tag) }}</option>
           </select>
           <select v-model="batchMode" aria-label="Массовое действие" class="h-9 rounded-md border border-input bg-background px-2 text-sm">
             <option value="add">Добавить</option>
             <option value="remove">Удалить</option>
           </select>
           <Button size="sm" :disabled="saving || !batchTagId" @click="applyBatch"><CheckCheck :size="16" /> Применить</Button>
+          <Button variant="outline" size="sm" :disabled="saving || aiBusy" @click="classifySelected(false)">
+            <LoaderCircle v-if="aiBusy" :size="16" class="animate-spin" />
+            AI: классифицировать выбранные
+          </Button>
+          <Button variant="outline" size="sm" :disabled="saving || aiBusy" @click="classifySelected(true)">
+            Повторить пустые AI-предложения
+          </Button>
         </div>
+
+        <div v-if="aiProgress" class="mb-4 rounded-lg border border-border bg-muted p-3 text-sm" role="status">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span>AI: обработано пакетов {{ aiProgress.completed }} / {{ aiProgress.total }} · треков {{ aiProgress.processed }} · пропущено {{ aiProgress.skipped }}</span>
+            <Button variant="outline" size="sm" :disabled="aiCancelRequested" @click="cancelClassification">
+              {{ aiCancelRequested ? 'Останавливается…' : 'Остановить после текущего запроса' }}
+            </Button>
+          </div>
+          <div class="mt-2 h-2 overflow-hidden rounded-full bg-border">
+            <div class="h-full bg-primary transition-all" :style="{ width: Math.round(aiProgress.completed / aiProgress.total * 100) + '%' }"></div>
+          </div>
+        </div>
+
+        <p v-if="aiUsage" class="mb-4 text-xs text-muted-foreground">
+          OpenRouter: вход {{ aiUsage.prompt_tokens ?? 'н/д' }} токенов,
+          выход {{ aiUsage.completion_tokens ?? 'н/д' }} токенов,
+          стоимость {{ aiUsage.cost_usd === null ? 'не предоставлена' : '$' + aiUsage.cost_usd.toFixed(6) }}
+        </p>
 
         <div v-if="!rows.length && !loading" class="rounded-xl border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
           Треки не найдены. Измени фильтры или выполни php artisan music:scan.
@@ -318,8 +501,20 @@ onUnmounted(() => {
               <h3 class="break-words text-sm font-semibold">{{ track.artist ? track.artist + ' — ' : '' }}{{ track.title }}</h3>
               <p v-if="track.album" class="mt-1 text-xs text-muted-foreground">{{ track.album }}</p>
               <div class="mt-2 flex flex-wrap gap-1.5">
-                <Badge v-for="tag in track.tags" :key="tag.id" :variant="tag.type === 'mood' ? 'outline' : 'secondary'">{{ tag.name }}</Badge>
+                <Badge v-for="tag in track.tags" :key="tag.id" :variant="tag.type === 'mood' ? 'outline' : 'secondary'">{{ tagLabel(tag) }}</Badge>
                 <span v-if="!track.tags.length" class="text-xs text-muted-foreground">Без категорий</span>
+              </div>
+              <div v-for="suggestion in (track.metadata_suggestions || []).filter(s => s.status === 'pending')" :key="suggestion.id" class="mt-3 rounded-lg border border-border bg-muted/60 p-3 text-xs">
+                <div class="mb-2 font-semibold">Предложение OpenRouter <span class="font-normal text-muted-foreground">({{ suggestion.model }})</span></div>
+                <div class="mb-2 flex flex-wrap gap-1">
+                  <Badge v-for="genre in suggestion.genres || []" :key="'g' + genre" variant="secondary">{{ translatedLabel('genre', genre) }}</Badge>
+                  <Badge v-for="mood in suggestion.moods || []" :key="'m' + mood" variant="outline">{{ translatedLabel('mood', mood) }}</Badge>
+                  <span v-if="!(suggestion.genres || []).length && !(suggestion.moods || []).length" class="text-muted-foreground">Модель не смогла определить категории</span>
+                </div>
+                <div class="flex gap-2">
+                  <Button size="sm" :disabled="saving || aiBusy" @click="decideSuggestion(suggestion, 'accept')">Принять</Button>
+                  <Button size="sm" variant="outline" :disabled="saving || aiBusy" @click="decideSuggestion(suggestion, 'reject')">Отклонить</Button>
+                </div>
               </div>
             </div>
             <Button variant="outline" size="sm" @click="editingId === track.id ? editingId = null : edit(track)">
@@ -333,7 +528,7 @@ onUnmounted(() => {
               <div class="flex flex-wrap gap-x-4 gap-y-2">
                 <label v-for="tag in group" :key="tag.id" class="flex cursor-pointer items-center gap-2 text-sm">
                   <Checkbox :model-value="editingTags.includes(tag.id)" @update:model-value="toggleEditTag(tag.id, $event)" />
-                  {{ tag.name }}
+                  {{ tagLabel(tag) }}
                 </label>
               </div>
             </div>

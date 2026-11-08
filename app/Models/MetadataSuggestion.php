@@ -8,12 +8,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class MetadataSuggestion extends Model
 {
     protected $fillable = [
-        'track_id', 'provider', 'recording_mbid', 'match_score', 'genres', 'status', 'error',
+        'track_id', 'provider', 'recording_mbid', 'match_score', 'genres', 'moods', 'model', 'status', 'error',
     ];
 
     protected function casts(): array
     {
-        return ['genres' => 'array', 'match_score' => 'integer'];
+        return ['genres' => 'array', 'moods' => 'array', 'match_score' => 'integer'];
     }
 
     public function track(): BelongsTo
