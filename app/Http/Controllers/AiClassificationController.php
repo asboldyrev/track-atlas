@@ -22,6 +22,7 @@ class AiClassificationController extends Controller
         $data = $request->validate([
             'tracks' => ['required', 'array', 'min:1', 'max:10'],
             'tracks.*' => ['required', 'integer', 'distinct', 'exists:tracks,id'],
+            'retry_empty' => ['sometimes', 'boolean'],
         ]);
 
         $ids = array_map('intval', $data['tracks']);
@@ -31,10 +32,23 @@ class AiClassificationController extends Controller
             return response()->json(['message' => 'Выбраны отсутствующие треки.'], 422);
         }
 
-        $alreadyChecked = MetadataSuggestion::query()
-            ->where('provider', 'openrouter')->whereIn('track_id', $ids)->pluck('track_id')->all();
+        $existing = MetadataSuggestion::query()
+            ->where('provider', 'openrouter')->whereIn('track_id', $ids)
+            ->get()->keyBy('track_id');
 
-        $eligible = $tracks->reject(fn ($track) => in_array($track->id, $alreadyChecked, true))->values();
+        $retryEmpty = (bool) ($data['retry_empty'] ?? false);
+        $eligible = $tracks->filter(function ($track) use ($existing, $retryEmpty) {
+            $suggestion = $existing->get($track->id);
+            if ($suggestion === null) {
+                return true;
+            }
+
+            // Allow a paid retry only for empty, still-pending suggestions.
+            // Accepted/rejected and nonempty suggestions are never overwritten here.
+            return $retryEmpty && $suggestion->status === 'pending'
+                && ($suggestion->genres ?? []) === []
+                && ($suggestion->moods ?? []) === [];
+        })->values();
         if ($eligible->isEmpty()) {
             return response()->json([
                 'message' => 'Все выбранные треки уже проверялись. Новые запросы не отправлены.',
