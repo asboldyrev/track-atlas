@@ -23,6 +23,7 @@ class AiClassificationController extends Controller
             'tracks' => ['required', 'array', 'min:1', 'max:10'],
             'tracks.*' => ['required', 'integer', 'distinct', 'exists:tracks,id'],
             'retry_empty' => ['sometimes', 'boolean'],
+            'retry_existing' => ['sometimes', 'boolean'],
         ]);
 
         $ids = array_map('intval', $data['tracks']);
@@ -37,10 +38,17 @@ class AiClassificationController extends Controller
             ->get()->keyBy('track_id');
 
         $retryEmpty = (bool) ($data['retry_empty'] ?? false);
-        $eligible = $tracks->filter(function ($track) use ($existing, $retryEmpty) {
+        $retryExisting = (bool) ($data['retry_existing'] ?? false);
+        $eligible = $tracks->filter(function ($track) use ($existing, $retryEmpty, $retryExisting) {
             $suggestion = $existing->get($track->id);
             if ($suggestion === null) {
                 return true;
+            }
+
+            // Explicit retry replaces pending or rejected proposals, but never
+            // silently changes already accepted decisions.
+            if ($retryExisting) {
+                return in_array($suggestion->status, ['pending', 'rejected'], true);
             }
 
             // Allow a paid retry only for empty, still-pending suggestions.
