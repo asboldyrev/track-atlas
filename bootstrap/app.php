@@ -5,6 +5,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use App\Console\Commands\ScanMusic;
+use App\Console\Commands\EnrichMusic;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -12,7 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
-    ->withCommands([ScanMusic::class])
+    ->withCommands([ScanMusic::class, EnrichMusic::class])
     ->withMiddleware(function (Middleware $middleware): void {
         //
     })
