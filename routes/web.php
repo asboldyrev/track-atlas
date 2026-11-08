@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\TrackController;
 use App\Http\Controllers\AiClassificationController;
+use App\Http\Controllers\TagMergeController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [TrackController::class, 'index'])->name('tracks.index');
@@ -13,3 +14,5 @@ Route::post('/tracks/batch-tags', [TrackController::class, 'batchTags'])->name('
 
 Route::post('/ai/classify', [AiClassificationController::class, 'classify'])->name('ai.classify');
 Route::put('/ai/suggestions/{suggestion}', [AiClassificationController::class, 'decide'])->name('ai.suggestions.decide');
+
+Route::post('/tags/merge', [TagMergeController::class, 'merge'])->name('tags.merge');

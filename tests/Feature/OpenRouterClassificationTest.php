@@ -240,4 +240,94 @@ class OpenRouterClassificationTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_selective_approval_only_applies_selected_labels(): void
+    {
+        $track = $this->makeTrack('Selective');
+        $proposal = MetadataSuggestion::create([
+            'track_id' => $track->id,
+            'provider' => 'openrouter',
+            'genres' => ['Rock', 'Pop'],
+            'moods' => ['Energetic', 'Fun'],
+            'status' => 'pending',
+        ]);
+
+        $this->putJson('/ai/suggestions/'.$proposal->id, [
+            'decision' => 'accept',
+            'genres' => ['Rock'],
+            'moods' => ['Fun'],
+        ])->assertOk();
+
+        $this->assertSame('accepted', $proposal->fresh()->status);
+        $this->assertEqualsCanonicalizing(['Rock', 'Fun'], $track->fresh()->tags->pluck('name')->all());
+        $this->assertDatabaseMissing('tags', ['name' => 'Pop']);
+        $this->assertDatabaseMissing('tags', ['name' => 'Energetic']);
+    }
+
+    public function test_selective_approval_rejects_injected_labels_without_changes(): void
+    {
+        $track = $this->makeTrack('Injected');
+        $proposal = MetadataSuggestion::create([
+            'track_id' => $track->id,
+            'provider' => 'openrouter',
+            'genres' => ['Rock'],
+            'moods' => ['Dark'],
+            'status' => 'pending',
+        ]);
+
+        $this->putJson('/ai/suggestions/'.$proposal->id, [
+            'decision' => 'accept', 'genres' => ['Invented'], 'moods' => ['Dark'],
+        ])->assertStatus(409);
+
+        $this->assertSame('pending', $proposal->fresh()->status);
+        $this->assertDatabaseCount('tags', 0);
+    }
+
+    public function test_selective_approval_can_choose_no_labels(): void
+    {
+        $track = $this->makeTrack('Nothing');
+        $proposal = MetadataSuggestion::create([
+            'track_id' => $track->id, 'provider' => 'openrouter',
+            'genres' => ['Rock'], 'moods' => ['Fun'], 'status' => 'pending',
+        ]);
+
+        $this->putJson('/ai/suggestions/'.$proposal->id, [
+            'decision' => 'accept', 'genres' => [], 'moods' => [],
+        ])->assertOk();
+
+        $this->assertSame('accepted', $proposal->fresh()->status);
+        $this->assertDatabaseCount('tags', 0);
+    }
+
+    public function test_deliberate_retry_can_reclassify_rejected_proposal_but_not_accepted(): void
+    {
+        config(['openrouter.key' => 'fake-secret']);
+        $rejected = $this->makeTrack('Rejected');
+        $accepted = $this->makeTrack('Accepted');
+
+        MetadataSuggestion::create([
+            'track_id' => $rejected->id, 'provider' => 'openrouter',
+            'genres' => ['Pop'], 'moods' => ['Sad'], 'status' => 'rejected',
+        ]);
+        MetadataSuggestion::create([
+            'track_id' => $accepted->id, 'provider' => 'openrouter',
+            'genres' => ['Rock'], 'moods' => ['Dark'], 'status' => 'accepted',
+        ]);
+
+        $this->fakeClassification([
+            ['id' => $rejected->id, 'genres' => ['Jazz'], 'moods' => ['Calm']],
+        ]);
+
+        $this->postJson('/ai/classify', [
+            'tracks' => [$rejected->id, $accepted->id],
+            'retry_reviewed' => true,
+        ])->assertOk()->assertJsonPath('processed', 1)->assertJsonPath('skipped', 1);
+
+        $this->assertDatabaseHas('metadata_suggestions', [
+            'track_id' => $rejected->id, 'status' => 'pending',
+        ]);
+        $this->assertSame(['Jazz'], $rejected->fresh()->metadataSuggestions->first()->genres);
+        $this->assertSame('accepted', $accepted->fresh()->metadataSuggestions->first()->status);
+        Http::assertSentCount(1);
+    }
+
 }

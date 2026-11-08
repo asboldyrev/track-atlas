@@ -23,6 +23,7 @@ class AiClassificationController extends Controller
             'tracks' => ['required', 'array', 'min:1', 'max:10'],
             'tracks.*' => ['required', 'integer', 'distinct', 'exists:tracks,id'],
             'retry_empty' => ['sometimes', 'boolean'],
+            'retry_reviewed' => ['sometimes', 'boolean'],
         ]);
 
         $ids = array_map('intval', $data['tracks']);
@@ -37,7 +38,8 @@ class AiClassificationController extends Controller
             ->get()->keyBy('track_id');
 
         $retryEmpty = (bool) ($data['retry_empty'] ?? false);
-        $eligible = $tracks->filter(function ($track) use ($existing, $retryEmpty) {
+        $retryReviewed = (bool) ($data['retry_reviewed'] ?? false);
+        $eligible = $tracks->filter(function ($track) use ($existing, $retryEmpty, $retryReviewed) {
             $suggestion = $existing->get($track->id);
             if ($suggestion === null) {
                 return true;
@@ -45,6 +47,12 @@ class AiClassificationController extends Controller
 
             // Allow a paid retry only for empty, still-pending suggestions.
             // Accepted/rejected and nonempty suggestions are never overwritten here.
+            if ($retryReviewed) {
+                // A deliberately paid retry can replace a pending or rejected
+                // proposal. Accepted decisions remain immutable.
+                return in_array($suggestion->status, ['pending', 'rejected'], true);
+            }
+
             return $retryEmpty && $suggestion->status === 'pending'
                 && ($suggestion->genres ?? []) === []
                 && ($suggestion->moods ?? []) === [];
@@ -104,6 +112,10 @@ class AiClassificationController extends Controller
     {
         $data = $request->validate([
             'decision' => ['required', 'in:accept,reject'],
+            'genres' => ['sometimes', 'array'],
+            'genres.*' => ['string', 'distinct', 'max:80'],
+            'moods' => ['sometimes', 'array'],
+            'moods.*' => ['string', 'distinct', 'max:80'],
         ]);
 
         if ($suggestion->provider !== 'openrouter') {
@@ -118,14 +130,34 @@ class AiClassificationController extends Controller
                 }
 
                 if ($data['decision'] === 'accept') {
-                    $pairs = ['genre' => $locked->genres ?? [], 'mood' => $locked->moods ?? []];
-                    foreach ($pairs as $type => $labels) {
-                        foreach ($labels as $label) {
-                            $name = $type === 'genre' ? $normalizer->canonical($label) : trim($label);
+                    // Backward-compatible: without an explicit selection, accept
+                    // the whole suggestion, as in the previous release.
+                    $genres = $data['genres'] ?? ($locked->genres ?? []);
+                    $moods = $data['moods'] ?? ($locked->moods ?? []);
+                    foreach (['genre' => [$genres, $locked->genres ?? []],
+                              'mood' => [$moods, $locked->moods ?? []]] as $type => [$selected, $allowed]) {
+                        // Always validate against the proposal on the server; do
+                        // not permit a client to inject a novel category here.
+                        $allowedByName = [];
+                        foreach ($allowed as $original) {
+                            $key = mb_strtolower(trim($original));
+                            $allowedByName[$key] = $original;
+                        }
+
+                        foreach ($selected as $label) {
+                            $key = mb_strtolower(trim($label));
+                            if (! array_key_exists($key, $allowedByName)) {
+                                throw new RuntimeException('Выбрана категория, отсутствующая в предложении.');
+                            }
+
+                            $name = $type === 'genre'
+                                ? $normalizer->canonical($allowedByName[$key])
+                                : trim($allowedByName[$key]);
                             $slug = $type === 'genre' ? $normalizer->slug($name) : Str::slug($name);
                             if ($slug === '' || mb_strlen($name) > 80) {
                                 continue;
                             }
+
                             $tag = Tag::firstOrCreate(['type' => $type, 'slug' => $slug], ['name' => $name]);
                             if (! $locked->track->tags()->where('tags.id', $tag->id)->exists()) {
                                 $locked->track->tags()->attach($tag->id, ['source' => 'openrouter']);
@@ -134,6 +166,8 @@ class AiClassificationController extends Controller
                     }
                 }
 
+                // Keep proposed labels for provenance and later inspection.
+                // Only active track_tag assignments are changed.
                 $locked->update(['status' => $data['decision'] === 'accept' ? 'accepted' : 'rejected']);
             });
         } catch (RuntimeException $e) {

@@ -30,6 +30,9 @@ const aiBusy = ref(false)
 const aiUsage = ref(null)
 const aiProgress = ref(null)
 const aiCancelRequested = ref(false)
+const proposalSelections = ref({})
+const mergeSourceId = ref('')
+const mergeTargetId = ref('')
 let requestNumber = 0
 let searchTimer
 
@@ -59,6 +62,56 @@ async function saveTranslation() {
 }
 
 const selectedTracks = computed(() => rows.value.filter(row => selected.value.includes(row.id)))
+const mergeSource = computed(() => allTags.value.find(tag => tag.id === Number(mergeSourceId.value)))
+const mergeTargets = computed(() => allTags.value.filter(tag => tag.type === mergeSource.value?.type && tag.id !== mergeSource.value?.id))
+
+function proposalKey(type, label) {
+  return type + ':' + label
+}
+function selectedProposalLabels(suggestion, type) {
+  const selected = proposalSelections.value[suggestion.id] || []
+  return (suggestion[type === 'genre' ? 'genres' : 'moods'] || [])
+    .filter(label => selected.includes(proposalKey(type, label)))
+}
+function proposalIsSelected(suggestion, type, label) {
+  return (proposalSelections.value[suggestion.id] || []).includes(proposalKey(type, label))
+}
+function toggleProposalLabel(suggestion, type, label, enabled) {
+  const key = proposalKey(type, label)
+  const current = proposalSelections.value[suggestion.id] || []
+  proposalSelections.value[suggestion.id] = enabled
+    ? [...new Set([...current, key])]
+    : current.filter(value => value !== key)
+}
+
+async function mergeTags() {
+  if (!mergeSource.value || !mergeTargets.value.some(tag => tag.id === Number(mergeTargetId.value))) return
+  const source = mergeSource.value
+  const target = mergeTargets.value.find(tag => tag.id === Number(mergeTargetId.value))
+  if (!window.confirm(
+    'Объединить «' + source.name + '» в «' + target.name + '»? '
+    + 'Первая категория будет удалена, связи с треками перенесены. '
+    + 'Старые ссылки с её ID потребуют обновления.'
+  )) return
+
+  saving.value = true
+  error.value = ''
+  try {
+    const result = await mutate('/tags/merge', 'POST', {
+      source_id: source.id,
+      target_id: target.id,
+    })
+    filters.genres = [...new Set(filters.genres.map(id => id === source.id ? target.id : id))]
+    filters.moods = [...new Set(filters.moods.map(id => id === source.id ? target.id : id))]
+    const query = makeQuery()
+    window.history.replaceState({}, '', '/' + (query ? '?' + query : ''))
+    mergeSourceId.value = ''
+    mergeTargetId.value = ''
+    notice.value = 'Категории объединены. Перенесено связей: ' + result.merged
+    await loadCatalog()
+  } catch (e) { error.value = e.message }
+  finally { saving.value = false }
+}
 
 function readUrl() {
   const params = new URLSearchParams(window.location.search)
@@ -136,6 +189,17 @@ async function loadCatalog() {
     moodTags.value = data.tags.mood || []
     tagTranslations.value = data.tag_translations || { genre: {}, mood: {} }
     selected.value = []
+    const nextSelections = {}
+    for (const track of rows.value) {
+      for (const suggestion of track.metadata_suggestions || []) {
+        if (suggestion.status !== 'pending') continue
+        nextSelections[suggestion.id] = [
+          ...(suggestion.genres || []).map(label => proposalKey('genre', label)),
+          ...(suggestion.moods || []).map(label => proposalKey('mood', label)),
+        ]
+      }
+    }
+    proposalSelections.value = nextSelections
   } catch (e) {
     if (current === requestNumber) error.value = e.message
   } finally {
@@ -215,7 +279,7 @@ async function applyBatch() {
   finally { saving.value = false }
 }
 
-async function classifySelected(retryEmpty = false) {
+async function classifySelected(mode = 'new') {
   if (aiBusy.value || saving.value || !selected.value.length) return
 
   const ids = [...new Set(selected.value)]
@@ -224,7 +288,7 @@ async function classifySelected(retryEmpty = false) {
     batches.push(ids.slice(index, index + 10))
   }
 
-  const action = retryEmpty ? 'повторно проверить пустые предложения для' : 'классифицировать'
+  const action = mode === 'empty' ? 'повторно проверить пустые предложения для' : (mode === 'reviewed' ? 'повторно классифицировать отклонённые/ожидающие предложения для' : 'классифицировать')
   const confirmed = window.confirm(
     'Отправить метаданные ' + ids.length + ' треков в OpenRouter и ' + action
     + ' их? Максимум ' + batches.length + ' платных запросов (по 10 треков). '
@@ -255,7 +319,8 @@ async function classifySelected(retryEmpty = false) {
       try {
         const result = await mutate('/ai/classify', 'POST', {
           tracks: batch,
-          retry_empty: retryEmpty === true,
+          retry_empty: mode === 'empty',
+          retry_reviewed: mode === 'reviewed',
         })
         aiProgress.value.processed += result.processed || 0
         aiProgress.value.skipped += result.skipped || 0
@@ -321,7 +386,13 @@ async function decideSuggestion(suggestion, decision) {
   saving.value = true
   error.value = ''
   try {
-    await mutate('/ai/suggestions/' + suggestion.id, 'PUT', { decision })
+    await mutate('/ai/suggestions/' + suggestion.id, 'PUT', {
+      decision,
+      ...(decision === 'accept' ? {
+        genres: selectedProposalLabels(suggestion, 'genre'),
+        moods: selectedProposalLabels(suggestion, 'mood'),
+      } : {}),
+    })
     notice.value = decision === 'accept' ? 'Предложенные теги применены' : 'Предложение отклонено'
     await loadCatalog()
   } catch (e) {
@@ -433,6 +504,19 @@ onUnmounted(() => {
           <Input v-model="translationValue" :disabled="!translationTagId" placeholder="Перевод на русский" class="mb-2" />
           <Button type="submit" size="sm" variant="outline" class="w-full" :disabled="saving || !translationTagId">Сохранить перевод</Button>
         </form>
+        <form class="mt-5 border-t border-border pt-5" @submit.prevent="mergeTags">
+          <h3 class="mb-2 text-sm font-semibold">Объединить дубли категорий</h3>
+          <p class="mb-3 text-xs text-muted-foreground">Теги треков сохраняются; исходная категория будет удалена.</p>
+          <select v-model="mergeSourceId" class="mb-2 h-9 w-full rounded-md border border-input bg-background px-2 text-sm" @change="mergeTargetId = ''">
+            <option value="">Какую категорию убрать?</option>
+            <option v-for="tag in allTags" :key="tag.id" :value="tag.id">{{ tagLabel(tag) }}</option>
+          </select>
+          <select v-model="mergeTargetId" :disabled="!mergeSourceId" class="mb-2 h-9 w-full rounded-md border border-input bg-background px-2 text-sm">
+            <option value="">В какую объединить?</option>
+            <option v-for="tag in mergeTargets" :key="tag.id" :value="tag.id">{{ tagLabel(tag) }}</option>
+          </select>
+          <Button type="submit" variant="outline" size="sm" class="w-full" :disabled="saving || !mergeTargetId">Объединить категории</Button>
+        </form>
       </Card>
 
       <Card class="min-w-0 p-5">
@@ -463,12 +547,15 @@ onUnmounted(() => {
             <option value="remove">Удалить</option>
           </select>
           <Button size="sm" :disabled="saving || !batchTagId" @click="applyBatch"><CheckCheck :size="16" /> Применить</Button>
-          <Button variant="outline" size="sm" :disabled="saving || aiBusy" @click="classifySelected(false)">
+          <Button variant="outline" size="sm" :disabled="saving || aiBusy" @click="classifySelected('new')">
             <LoaderCircle v-if="aiBusy" :size="16" class="animate-spin" />
             AI: классифицировать выбранные
           </Button>
-          <Button variant="outline" size="sm" :disabled="saving || aiBusy" @click="classifySelected(true)">
+          <Button variant="outline" size="sm" :disabled="saving || aiBusy" @click="classifySelected('empty')">
             Повторить пустые AI-предложения
+          </Button>
+          <Button variant="outline" size="sm" :disabled="saving || aiBusy" @click="classifySelected('reviewed')">
+            Повторить выбранные AI-предложения
           </Button>
         </div>
 
@@ -505,10 +592,17 @@ onUnmounted(() => {
                 <span v-if="!track.tags.length" class="text-xs text-muted-foreground">Без категорий</span>
               </div>
               <div v-for="suggestion in (track.metadata_suggestions || []).filter(s => s.status === 'pending')" :key="suggestion.id" class="mt-3 rounded-lg border border-border bg-muted/60 p-3 text-xs">
+                <div class="mb-1 text-muted-foreground">Отметь категории, которые нужно применить</div>
                 <div class="mb-2 font-semibold">Предложение OpenRouter <span class="font-normal text-muted-foreground">({{ suggestion.model }})</span></div>
                 <div class="mb-2 flex flex-wrap gap-1">
-                  <Badge v-for="genre in suggestion.genres || []" :key="'g' + genre" variant="secondary">{{ translatedLabel('genre', genre) }}</Badge>
-                  <Badge v-for="mood in suggestion.moods || []" :key="'m' + mood" variant="outline">{{ translatedLabel('mood', mood) }}</Badge>
+                  <label v-for="genre in suggestion.genres || []" :key="'g' + genre" class="inline-flex cursor-pointer items-center gap-1.5">
+                    <Checkbox :model-value="proposalIsSelected(suggestion, 'genre', genre)" @update:model-value="toggleProposalLabel(suggestion, 'genre', genre, $event)" />
+                    <Badge variant="secondary">{{ translatedLabel('genre', genre) }}</Badge>
+                  </label>
+                  <label v-for="mood in suggestion.moods || []" :key="'m' + mood" class="inline-flex cursor-pointer items-center gap-1.5">
+                    <Checkbox :model-value="proposalIsSelected(suggestion, 'mood', mood)" @update:model-value="toggleProposalLabel(suggestion, 'mood', mood, $event)" />
+                    <Badge variant="outline">{{ translatedLabel('mood', mood) }}</Badge>
+                  </label>
                   <span v-if="!(suggestion.genres || []).length && !(suggestion.moods || []).length" class="text-muted-foreground">Модель не смогла определить категории</span>
                 </div>
                 <div class="flex gap-2">
