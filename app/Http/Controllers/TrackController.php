@@ -60,7 +60,7 @@ class TrackController extends Controller
     public function update(Request $request, Track $track): JsonResponse
     {
         $data = $request->validate([
-            'tags' => ['required', 'array'],
+            'tags' => ['present', 'array'],
             'tags.*' => ['integer', 'distinct', 'exists:tags,id'],
         ]);
 
