@@ -146,4 +146,53 @@ class MusicCatalogTest extends TestCase
         $this->assertCount(0, $track->fresh()->tags);
     }
 
+    public function test_catalog_exposes_translations_without_changing_canonical_names_or_filter_ids(): void
+    {
+        $track = Track::create(['path'=>'translated.mp3','title'=>'Translated','size'=>1,'file_mtime'=>1]);
+        $tag = Tag::create(['type'=>'mood','name'=>'Melancholic','slug'=>'melancholic']);
+        $track->tags()->attach($tag->id);
+
+        $this->getJson('/catalog?moods[]='.$tag->id)
+            ->assertOk()
+            ->assertJsonPath('tracks.total', 1)
+            ->assertJsonPath('tags.mood.0.name', 'Melancholic')
+            ->assertJsonPath('tag_translations.mood.melancholic', 'Меланхоличный');
+
+        $this->putJson('/tags/'.$tag->id.'/translation', [
+            'name_ru' => 'Тоскливый',
+        ])->assertOk()->assertJsonPath('tag.name_ru', 'Тоскливый');
+
+        $this->assertDatabaseHas('tags', [
+            'id' => $tag->id,
+            'name' => 'Melancholic',
+            'slug' => 'melancholic',
+            'name_ru' => 'Тоскливый',
+        ]);
+        $this->getJson('/catalog?moods[]='.$tag->id)
+            ->assertOk()
+            ->assertJsonPath('tracks.total', 1)
+            ->assertJsonPath('tags.mood.0.name_ru', 'Тоскливый');
+    }
+
+    public function test_translation_can_be_cleared_and_invalid_translation_is_rejected(): void
+    {
+        $tag = Tag::create([
+            'type'=>'genre', 'name'=>'Darkwave', 'slug'=>'darkwave',
+            'name_ru'=>'Дарквейв',
+        ]);
+
+        $this->putJson('/tags/'.$tag->id.'/translation', [
+            'name_ru' => str_repeat('a', 121),
+        ])->assertUnprocessable();
+
+        $this->putJson('/tags/'.$tag->id.'/translation', [
+            'name_ru' => null,
+        ])->assertOk()->assertJsonPath('tag.name_ru', null);
+
+        $this->assertDatabaseHas('tags', [
+            'id'=>$tag->id, 'name'=>'Darkwave', 'slug'=>'darkwave',
+            'name_ru'=>null,
+        ]);
+    }
+
 }
