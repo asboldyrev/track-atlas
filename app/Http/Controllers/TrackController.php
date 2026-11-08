@@ -29,7 +29,7 @@ class TrackController extends Controller
             'page' => ['sometimes', 'integer', 'min:1'],
         ]);
 
-        $query = Track::query()->where('is_missing', false)->with('tags');
+        $query = Track::query()->where('is_missing', false)->with(['tags', 'metadataSuggestions' => fn ($query) => $query->where('provider', 'openrouter')]);
 
         if ($search = ($filters['search'] ?? null)) {
             $query->where(fn ($q) => $q->where('title', 'like', '%'.$search.'%')
