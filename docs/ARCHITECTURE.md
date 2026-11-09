@@ -1,7 +1,7 @@
 # Архитектура и технические решения
 
 ## 1. Запуск
-Локальный Laravel (PHP/Composer) + Vue 3/Vite (Node/npm), SQLite. Inertia рассматривается как способ избежать отдельного SPA API; окончательно зависит от уже созданного Laravel-каркаса. Сам веб-проект **не контейнеризируется**. CLI-сканер — Artisan, API обогащения — PHP HTTP client.
+Локальный Laravel (PHP/Composer) + Vue 3/Vite (Node/npm), SQLite. Frontend подключается по схеме **Blade mount + JSON API**: страница отдаётся Blade-шаблоном с точкой монтирования, Vue-приложение собирается Vite и общается с сервером через JSON API. **Inertia не используется** (решение зафиксировано в `docs/DECISIONS.md`). Сам веб-проект **не контейнеризируется**. CLI-сканер — Artisan, API обогащения — PHP HTTP client.
 
 ## 2. Предлагаемая модель БД
 
