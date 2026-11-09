@@ -12,7 +12,7 @@
 `id`, `type` (genre|mood), `name`, `slug`, timestamps, уникальность (`type`, `slug`).
 
 ### track_tag
-`track_id`, `tag_id`, `source` (manual|file|musicbrainz|openrouter|search|audio), timestamps; уникальность (`track_id`, `tag_id`). Ручное назначение имеет приоритет. Для источников, конкурирующих за один тег, по необходимости позже вынести provenance в отдельную сущность.
+`track_id`, `tag_id`, `source` (manual|file|openrouter|search|audio), timestamps; уникальность (`track_id`, `tag_id`). Ручное назначение имеет приоритет. Для источников, конкурирующих за один тег, по необходимости позже вынести provenance в отдельную сущность.
 
 ### tag_suggestions (добавить при реализации AI)
 `id`, `track_id`, `tag_id` или `proposed_name`, `type`, `provider`, `model`, `confidence` nullable, `status` (pending|accepted|rejected), `details` JSON, timestamps. **Не смешивать** неподтверждённые рекомендации с активной пользовательской разметкой.
@@ -26,7 +26,7 @@
 - `TrackRepository`/Eloquent: upsert и сохранение пользовательских тегов.
 - `TagNormalizer`: нормализация регистра, пробелов, дефисов и заданных алиасов.
 - `ReferenceFilter`: применяет условия OR в группах / AND между группами.
-- `EnrichmentService` и адаптеры `MusicBrainzProvider`, `OpenRouterProvider`, `SearchProvider`: добавляются только по мере реализации.
+- `EnrichmentService` и адаптеры `OpenRouterProvider`, `SearchProvider`: добавляются только по мере реализации.
 - `AudioAnalysisProvider`: поздний внешний CLI/Docker-адаптер.
 
 Это логические зоны ответственности, а не требование создавать множество абстрактных классов в MVP.
@@ -46,12 +46,10 @@
 - Никогда не писать в медиафайлы.
 - Запросы к внешним системам — только вручную, после информирования о метаданных/стоимости.
 - Ограничить ответы AI валидируемой схемой и списком доступных тегов; не доверять внешнему содержимому как инструкциям.
-- MusicBrainz требует аккуратной идентификации записи; известность артиста сама по себе не подтверждает жанр конкретного трека.
 - Допускать частичный неуспех и возможность перезапуска, не дублировать результаты.
 
 ## 6. Полезные источники (кандидаты)
 - [getID3](https://github.com/JamesHeinrich/getID3)
-- [MusicBrainz API](https://musicbrainz.org/doc/MusicBrainz_API)
 - [OpenRouter API](https://openrouter.ai/docs)
 - [Perplexity Sonar](https://docs.perplexity.ai/)
 - [Essentia](https://essentia.upf.edu/)

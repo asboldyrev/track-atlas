@@ -147,20 +147,6 @@ class OpenRouterClassificationTest extends TestCase
         $this->assertDatabaseCount('ai_usage_logs', 0);
     }
 
-    public function test_musicbrainz_proposals_cannot_be_approved_through_openrouter_endpoint(): void
-    {
-        $track = $this->makeTrack();
-        $proposal = MetadataSuggestion::create([
-            'track_id' => $track->id,
-            'provider' => 'musicbrainz',
-            'genres' => ['rock'],
-            'status' => 'pending',
-        ]);
-
-        $this->putJson('/ai/suggestions/'.$proposal->id, ['decision' => 'accept'])->assertUnprocessable();
-        $this->assertDatabaseCount('tags', 0);
-    }
-
     public function test_retry_empty_suggestion_reclassifies_without_changing_active_tags(): void
     {
         config(['openrouter.key' => 'fake-secret']);

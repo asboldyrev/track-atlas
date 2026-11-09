@@ -6,7 +6,7 @@
 
 ### Модель данных
 
-Миграция добавляет `moods` и `model` к таблице `metadata_suggestions` и таблицу `ai_usage_logs` для ответа API по токенам и стоимости. Существующие предложения MusicBrainz продолжают работать.
+Миграция добавляет `moods` и `model` к таблице `metadata_suggestions` и таблицу `ai_usage_logs` для ответа API по токенам и стоимости.
 
 ### API
 
