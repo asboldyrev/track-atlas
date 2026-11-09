@@ -108,4 +108,64 @@ class TagsApiTest extends TestCase
             ->assertStatus(422)
             ->assertJsonValidationErrors('type');
     }
+
+    /**
+     * D3: кириллица в LIKE на SQLite регистронезависима только для ASCII, поэтому
+     * поиск идёт по нормализованным колонкам name_search/name_ru_search.
+     */
+    public function test_tag_search_ignores_case_for_cyrillic_names(): void
+    {
+        $this->makeTag('mood', 'Alternative', 'Альт');
+        $this->makeTag('genre', 'Pop', 'Поп');
+
+        foreach (['альт', 'Альт', 'АЛЬТ'] as $needle) {
+            $this->getJson('/api/tags?search='.urlencode($needle))
+                ->assertOk()
+                ->assertJsonPath('tags.total', 1)
+                ->assertJsonPath('tags.data.0.slug', 'alternative');
+        }
+    }
+
+    public function test_tag_search_ignores_case_for_ascii_names_and_is_a_substring_match(): void
+    {
+        $this->makeTag('genre', 'Synthpop', 'Синти-поп');
+
+        foreach (['SYNTH', 'synth', 'YnThp'] as $needle) {
+            $this->getJson('/api/tags?search='.urlencode($needle))
+                ->assertOk()
+                ->assertJsonPath('tags.total', 1)
+                ->assertJsonPath('tags.data.0.slug', 'synthpop');
+        }
+    }
+
+    public function test_tag_search_key_follows_a_later_russian_name_update(): void
+    {
+        $tag = $this->makeTag('genre', 'Ambient');
+
+        $this->getJson('/api/tags?search='.urlencode('эмби'))
+            ->assertOk()
+            ->assertJsonPath('tags.total', 0);
+
+        $tag->update(['name_ru' => 'Эмбиент']);
+
+        $this->getJson('/api/tags?search='.urlencode('ЭМБИ'))
+            ->assertOk()
+            ->assertJsonPath('tags.total', 1)
+            ->assertJsonPath('tags.data.0.slug', 'ambient');
+    }
+
+    public function test_api_does_not_expose_the_internal_search_keys(): void
+    {
+        $this->makeTag('genre', 'Pop', 'Поп');
+
+        $response = $this->getJson('/api/tags?search='.urlencode('поп'))
+            ->assertOk()
+            ->assertJsonPath('tags.total', 1);
+
+        $payload = $response->json('tags.data.0');
+
+        // Свёрнутые ключи — служебные: публичный контракт строки тега не меняется.
+        $this->assertArrayNotHasKey('name_search', $payload);
+        $this->assertArrayNotHasKey('name_ru_search', $payload);
+    }
 }

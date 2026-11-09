@@ -29,12 +29,16 @@ class TagApiController extends Controller
         }
 
         if ($search = trim((string) ($data['search'] ?? ''))) {
+            // Регистр не важен: SQLite сравнивает LIKE без учёта регистра только
+            // для ASCII (кириллица — «альт» против «Альт»), поэтому запрос
+            // сворачивается в нижний регистр тем же способом, что и значения
+            // тегов — см. Tag::searchKey() и колонки name_search/name_ru_search.
             // Подстановочные знаки LIKE экранируются: без этого «_» или «%»
             // совпадали бы с любым тегом.
-            $pattern = LikePattern::contains($search);
+            $pattern = LikePattern::contains((string) Tag::searchKey($search));
             $query->where(fn ($q) => $q
-                ->whereRaw(LikePattern::expression('name'), [$pattern])
-                ->orWhereRaw(LikePattern::expression('name_ru'), [$pattern]));
+                ->whereRaw(LikePattern::expression('name_search'), [$pattern])
+                ->orWhereRaw(LikePattern::expression('name_ru_search'), [$pattern]));
         }
 
         return response()->json([
