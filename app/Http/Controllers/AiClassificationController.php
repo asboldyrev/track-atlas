@@ -21,7 +21,7 @@ class AiClassificationController extends Controller
     public function classify(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'tracks' => ['required', 'array', 'min:1', 'max:10'],
+            'tracks' => ['required', 'array', 'min:1', 'max:'.(int) config('api.limits.ai_tracks_max')],
             'tracks.*' => ['required', 'integer', 'distinct', 'exists:tracks,id'],
             'retry_empty' => ['sometimes', 'boolean'],
         ]);
