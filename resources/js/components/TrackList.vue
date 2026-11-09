@@ -9,6 +9,9 @@ const props = defineProps({
   selected: { type: Array, default: () => [] },
   compact: { type: Boolean, default: false },
   activeId: { type: [Number, String], default: null },
+  // Когда список не загрузился, пустое состояние не показываем: оно утверждает,
+  // что данных нет, хотя на самом деле запрос упал (сообщение об ошибке — выше).
+  error: { type: Boolean, default: false },
 })
 const emit = defineEmits(['toggle-select', 'toggle-all', 'changed', 'activate'])
 
@@ -58,22 +61,23 @@ function allSelected() {
       </div>
     </div>
 
-    <div v-else-if="!rows.length" class="rounded-xl border border-dashed border-border py-12 text-center">
+    <div v-else-if="!rows.length && !error" class="rounded-xl border border-dashed border-border py-12 text-center">
       <slot name="empty" />
     </div>
 
-    <TrackRow
-      v-for="track in rows"
-      v-else
-      :key="track.id"
-      :track="track"
-      :selectable="selectable"
-      :selected="isSelected(track.id)"
-      :compact="compact"
-      :active="activeId === track.id"
-      @toggle-select="emit('toggle-select', track.id, $event)"
-      @changed="emit('changed')"
-      @activate="emit('activate', track.id)"
-    />
+    <template v-else>
+      <TrackRow
+        v-for="track in rows"
+        :key="track.id"
+        :track="track"
+        :selectable="selectable"
+        :selected="isSelected(track.id)"
+        :compact="compact"
+        :active="activeId === track.id"
+        @toggle-select="emit('toggle-select', track.id, $event)"
+        @changed="emit('changed')"
+        @activate="emit('activate', track.id)"
+      />
+    </template>
   </div>
 </template>

@@ -1,6 +1,7 @@
 <script setup>
 import { ArrowDownAZ, ArrowUpAZ, AlignJustify, Rows3 } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
+import { Select } from '@/components/ui/select'
 import { PAGE_SIZES, SORT_OPTIONS } from '@/composables/useTracks'
 
 // A8: единая панель сортировки, размера страницы и плотности для списков.
@@ -22,14 +23,14 @@ const sortOptions = SORT_OPTIONS
   <div class="flex flex-wrap items-end gap-x-4 gap-y-2 rounded-lg border border-border bg-muted/60 px-3 py-2">
     <label class="flex items-center gap-2 text-xs font-medium text-muted-foreground">
       Сортировка
-      <select
-        :value="sort"
-        class="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+      <Select
+        :model-value="sort"
+        class="h-8 text-xs"
         :disabled="disabled"
-        @change="emit('update:sort', $event.target.value)"
+        @update:model-value="emit('update:sort', $event)"
       >
         <option v-for="option in sortOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-      </select>
+      </Select>
     </label>
 
     <Button
@@ -48,14 +49,14 @@ const sortOptions = SORT_OPTIONS
 
     <label class="flex items-center gap-2 text-xs font-medium text-muted-foreground">
       На странице
-      <select
-        :value="perPage"
-        class="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+      <Select
+        :model-value="perPage"
+        class="h-8 text-xs"
         :disabled="disabled"
-        @change="emit('update:perPage', Number($event.target.value))"
+        @update:model-value="emit('update:perPage', Number($event))"
       >
         <option v-for="size in pageSizes" :key="size" :value="size">{{ size }}</option>
-      </select>
+      </Select>
     </label>
 
     <Button

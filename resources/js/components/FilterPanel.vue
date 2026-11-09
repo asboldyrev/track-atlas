@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Card } from '@/components/ui/card'
+import { Select } from '@/components/ui/select'
 import { useTags } from '@/composables/useTags'
 
 defineProps({
@@ -11,9 +12,12 @@ defineProps({
   genreTags: { type: Array, default: () => [] },
   moodTags: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['search', 'toggle', 'untagged', 'reset'])
+const emit = defineEmits(['search', 'toggle', 'untagged', 'reset', 'reload-tags'])
 
-const { tagLabel } = useTags()
+// loading/error справочника берём из общего composable: пока категории грузятся,
+// список не должен выглядеть пустым («Пока нет жанров» — это про отсутствие
+// данных, а не про процесс загрузки).
+const { tagLabel, loading: tagsLoading, error: tagsError } = useTags()
 </script>
 
 <template>
@@ -31,10 +35,19 @@ const { tagLabel } = useTags()
       </span>
     </label>
 
+    <div v-if="tagsError" role="alert" class="mb-5 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+      {{ tagsError }}
+      <Button variant="ghost" size="sm" class="ml-2" @click="emit('reload-tags')">Повторить</Button>
+    </div>
+
     <fieldset class="mb-5">
       <legend class="mb-2 text-sm font-semibold">Жанры</legend>
-      <p v-if="!genreTags.length" class="text-sm text-muted-foreground">Пока нет жанров</p>
-      <div class="max-h-56 space-y-2 overflow-y-auto pr-1">
+      <div v-if="tagsLoading" role="status" aria-live="polite" aria-busy="true" class="space-y-2">
+        <span class="sr-only">Загрузка жанров…</span>
+        <span v-for="n in 3" :key="n" aria-hidden="true" class="block h-4 animate-pulse rounded bg-foreground/10"></span>
+      </div>
+      <p v-else-if="!genreTags.length && !tagsError" class="text-sm text-muted-foreground">Пока нет жанров</p>
+      <div v-else-if="genreTags.length" class="max-h-56 space-y-2 overflow-y-auto pr-1">
         <label v-for="tag in genreTags" :key="tag.id" class="flex cursor-pointer items-center gap-2 text-sm">
           <Checkbox
             :model-value="filters.genres.includes(tag.id)"
@@ -48,8 +61,12 @@ const { tagLabel } = useTags()
 
     <fieldset class="mb-5">
       <legend class="mb-2 text-sm font-semibold">Настроения / Vibe</legend>
-      <p v-if="!moodTags.length" class="text-sm text-muted-foreground">Пока нет настроений</p>
-      <div class="max-h-56 space-y-2 overflow-y-auto pr-1">
+      <div v-if="tagsLoading" role="status" aria-live="polite" aria-busy="true" class="space-y-2">
+        <span class="sr-only">Загрузка настроений…</span>
+        <span v-for="n in 3" :key="n" aria-hidden="true" class="block h-4 animate-pulse rounded bg-foreground/10"></span>
+      </div>
+      <p v-else-if="!moodTags.length && !tagsError" class="text-sm text-muted-foreground">Пока нет настроений</p>
+      <div v-else-if="moodTags.length" class="max-h-56 space-y-2 overflow-y-auto pr-1">
         <label v-for="tag in moodTags" :key="tag.id" class="flex cursor-pointer items-center gap-2 text-sm">
           <Checkbox
             :model-value="filters.moods.includes(tag.id)"
@@ -63,17 +80,17 @@ const { tagLabel } = useTags()
 
     <label class="block text-sm font-medium">
       Полнота разметки
-      <select
-        :value="filters.untagged"
+      <Select
+        :model-value="filters.untagged"
         aria-label="Полнота разметки"
-        class="mt-2 h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-        @change="emit('untagged', $event.target.value)"
+        class="mt-2 w-full"
+        @update:model-value="emit('untagged', $event)"
       >
         <option value="">Все треки</option>
         <option value="genre">Без жанров</option>
         <option value="mood">Без настроений</option>
         <option value="all">Без любых категорий</option>
-      </select>
+      </Select>
     </label>
   </Card>
 </template>

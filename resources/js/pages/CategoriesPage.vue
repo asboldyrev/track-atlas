@@ -4,6 +4,7 @@ import { LoaderCircle, Plus } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
+import { Select } from '@/components/ui/select'
 import TagTranslationRow from '@/components/TagTranslationRow.vue'
 import { useTags } from '@/composables/useTags'
 import { useAsyncAction } from '@/composables/useAsyncAction'
@@ -51,14 +52,14 @@ onMounted(loadTags)
       <form @submit.prevent="addTag">
         <label class="mb-3 block text-sm font-medium">
           Тип
-          <select
+          <Select
             v-model="newTagType"
             aria-label="Тип категории"
-            class="mt-2 h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+            class="mt-2 w-full"
           >
             <option value="genre">Жанр</option>
             <option value="mood">Настроение</option>
-          </select>
+          </Select>
         </label>
         <label class="mb-3 block text-sm font-medium">
           Название
@@ -93,8 +94,8 @@ onMounted(loadTags)
           <span class="sr-only">Загрузка категорий…</span>
           <span v-for="n in 3" :key="n" aria-hidden="true" class="block h-10 animate-pulse rounded bg-foreground/5"></span>
         </div>
-        <p v-else-if="!group.tags.length" class="text-sm text-muted-foreground">Категорий этого типа пока нет. Добавьте первую слева.</p>
-        <div v-else>
+        <p v-else-if="!group.tags.length && !loadError" class="text-sm text-muted-foreground">Категорий этого типа пока нет. Добавьте первую слева.</p>
+        <div v-else-if="group.tags.length">
           <p class="mb-2 text-xs text-muted-foreground">Русское название можно изменить — оригинал и фильтры сохраняются.</p>
           <TagTranslationRow v-for="tag in group.tags" :key="tag.id" :tag="tag" @saved="loadTags" />
         </div>

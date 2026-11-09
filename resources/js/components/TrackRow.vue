@@ -68,7 +68,7 @@ async function decideSuggestion(suggestion, decision) {
     :id="'track-row-' + track.id"
     tabindex="-1"
     class="border-b border-border outline-none transition-colors last:border-0 focus-visible:ring-2 focus-visible:ring-ring"
-    :class="[compact ? 'py-2' : 'py-4', active ? 'bg-secondary/70' : '']"
+    :class="[compact ? 'py-2' : 'py-4', active ? 'bg-secondary/70' : (selected ? 'bg-primary/5' : '')]"
     :aria-current="active ? 'true' : undefined"
     @focus="emit('activate')"
   >

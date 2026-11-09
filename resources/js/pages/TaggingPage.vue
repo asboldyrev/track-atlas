@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { ChevronLeft, ChevronRight, CornerDownLeft, Keyboard, RotateCcw, Sparkles, AlertTriangle, X } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Select } from '@/components/ui/select'
 import BatchBar from '@/components/BatchBar.vue'
 import ListToolbar from '@/components/ListToolbar.vue'
 import TrackList from '@/components/TrackList.vue'
@@ -11,7 +12,7 @@ import { useTags } from '@/composables/useTags'
 import { useAsyncAction } from '@/composables/useAsyncAction'
 import { useDensity } from '@/composables/useDensity'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
-import { useTracks, batchTags } from '@/composables/useTracks'
+import { useTracks, batchTags, TRUNCATED_LIMIT } from '@/composables/useTracks'
 import { useSuggestions } from '@/composables/useSuggestions'
 
 const { allTags, tagLabel, loadTags } = useTags()
@@ -46,6 +47,9 @@ const activeIndex = ref(-1)
 const helpOpen = ref(false)
 const shortcutHint = ref('')
 const helpCloseButton = ref(null)
+const helpTrigger = ref(null)
+const helpDialog = ref(null)
+let helpReturnFocus = null
 let hintTimer
 
 const activeId = computed(() => rows.value[activeIndex.value]?.id ?? null)
@@ -124,14 +128,46 @@ function applyShortcut() {
   return true
 }
 
+// Ссылка на компонент Button — это его инстанс, а не DOM-узел: фокусируем
+// корневой элемент через $el.
+function focusNode(refValue) {
+  const el = refValue?.$el || refValue
+  el?.focus?.()
+}
+
 function openHelp() {
+  helpReturnFocus = document.activeElement
   helpOpen.value = true
-  nextTick(() => helpCloseButton.value?.focus())
+  nextTick(() => focusNode(helpCloseButton.value))
+}
+
+function closeHelp() {
+  helpOpen.value = false
+  nextTick(() => focusNode(helpReturnFocus || helpTrigger.value))
 }
 
 function toggleHelp() {
-  if (helpOpen.value) helpOpen.value = false
+  if (helpOpen.value) closeHelp()
   else openHelp()
+}
+
+// Диалог справки модален: удерживаем фокус внутри него, пока он открыт.
+function trapDialogFocus(event) {
+  if (event.key !== 'Tab') return
+  const root = helpDialog.value?.$el || helpDialog.value
+  if (!root) return
+  const focusables = [...root.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter(el => !el.hasAttribute('disabled'))
+  if (!focusables.length) return
+  const first = focusables[0]
+  const last = focusables[focusables.length - 1]
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
 }
 
 useKeyboardShortcuts({
@@ -141,7 +177,7 @@ useKeyboardShortcuts({
   Enter: event => (isControlTarget(event.target) ? false : applyShortcut()),
   '?': () => { openHelp(); return true },
   Escape: () => {
-    if (helpOpen.value) { helpOpen.value = false; return true }
+    if (helpOpen.value) { closeHelp(); return true }
     return false
   },
   '1': () => chooseQuickTag(1),
@@ -330,7 +366,7 @@ function cancelClassification() {
 }
 
 onMounted(() => {
-  void loadTags()
+  void loadTags().catch(() => {})
   void loadQueue()
 })
 </script>
@@ -346,19 +382,19 @@ onMounted(() => {
         <div class="flex flex-wrap items-end gap-2">
           <label class="text-sm font-medium">
             Показать
-            <select
-              :value="queue.untagged"
+            <Select
+              :model-value="queue.untagged"
               aria-label="Показать треки"
-              class="mt-2 block h-9 rounded-md border border-input bg-background px-2 text-sm"
-              @change="changeQueueMode($event.target.value)"
+              class="mt-2 block"
+              @update:model-value="changeQueueMode($event)"
             >
               <option value="all">Без любых категорий</option>
               <option value="genre">Без жанров</option>
               <option value="mood">Без настроений</option>
-            </select>
+            </Select>
           </label>
           <Button variant="outline" size="sm" :disabled="loading" @click="loadQueue"><RotateCcw :size="14" /> Обновить</Button>
-          <Button variant="outline" size="sm" :aria-expanded="helpOpen" aria-controls="tagging-shortcuts" @click="toggleHelp">
+          <Button ref="helpTrigger" variant="outline" size="sm" :aria-expanded="helpOpen" aria-controls="tagging-shortcuts" @click="toggleHelp">
             <Keyboard :size="15" aria-hidden="true" /> Горячие клавиши
           </Button>
         </div>
@@ -388,7 +424,7 @@ onMounted(() => {
       />
 
       <p v-if="truncated" role="status" class="mb-3 rounded-lg border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
-        Показаны первые 900 треков по этому фильтру — сузьте фильтр, чтобы отсортировать всю очередь.
+        Показаны первые {{ TRUNCATED_LIMIT }} треков по этому фильтру — сузьте фильтр, чтобы отсортировать всю очередь.
       </p>
 
       <BatchBar
@@ -448,6 +484,7 @@ onMounted(() => {
         :loading="loading"
         :compact="compact"
         :active-id="activeId"
+        :error="Boolean(error)"
         selectable
         :selected="selected"
         @toggle-select="toggleSelected"
@@ -474,19 +511,21 @@ onMounted(() => {
       </div>
     </Card>
 
-    <div v-if="helpOpen" class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center" @click.self="helpOpen = false">
+    <div v-if="helpOpen" class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center" @click.self="closeHelp()">
       <div
+        ref="helpDialog"
         id="tagging-shortcuts"
         role="dialog"
         aria-modal="true"
         aria-labelledby="tagging-shortcuts-title"
         class="w-full max-w-lg rounded-xl border border-border bg-card p-5 shadow-lg"
+        @keydown="trapDialogFocus"
       >
         <div class="mb-3 flex items-start justify-between gap-3">
           <h2 id="tagging-shortcuts-title" class="flex items-center gap-2 text-lg font-semibold">
             <Keyboard :size="18" aria-hidden="true" /> Горячие клавиши разметки
           </h2>
-          <Button ref="helpCloseButton" variant="ghost" size="sm" aria-label="Закрыть справку по клавишам" @click="helpOpen = false">
+          <Button ref="helpCloseButton" variant="ghost" size="sm" aria-label="Закрыть справку по клавишам" @click="closeHelp()">
             <X :size="16" aria-hidden="true" />
           </Button>
         </div>
@@ -516,7 +555,7 @@ onMounted(() => {
           </div>
         </dl>
         <div class="mt-4 flex justify-end">
-          <Button size="sm" @click="helpOpen = false">Понятно</Button>
+          <Button size="sm" @click="closeHelp()">Понятно</Button>
         </div>
       </div>
     </div>

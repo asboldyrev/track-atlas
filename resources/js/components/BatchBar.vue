@@ -1,6 +1,7 @@
 <script setup>
 import { CheckCheck, LoaderCircle, Sparkles, X } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
+import { Select } from '@/components/ui/select'
 import { useTags } from '@/composables/useTags'
 
 const props = defineProps({
@@ -25,24 +26,23 @@ const { allTags, tagLabel } = useTags()
       <template v-else>Массовые действия</template>
     </span>
 
-    <select
-      :value="tagId"
+    <Select
+      :model-value="tagId"
       aria-label="Категория для массового действия"
-      class="h-9 min-w-40 rounded-md border border-input bg-background px-2 text-sm"
-      @change="emit('update:tagId', $event.target.value)"
+      class="min-w-40"
+      @update:model-value="emit('update:tagId', $event)"
     >
       <option value="">Выбрать категорию</option>
       <option v-for="tag in allTags" :key="tag.id" :value="tag.id">{{ tagLabel(tag) }}</option>
-    </select>
-    <select
-      :value="mode"
+    </Select>
+    <Select
+      :model-value="mode"
       aria-label="Тип массового действия"
-      class="h-9 rounded-md border border-input bg-background px-2 text-sm"
-      @change="emit('update:mode', $event.target.value)"
+      @update:model-value="emit('update:mode', $event)"
     >
       <option value="add">Добавить</option>
       <option value="remove">Удалить</option>
-    </select>
+    </Select>
     <Button size="sm" :disabled="busy || !selectedCount || !tagId" @click="emit('apply')">
       <LoaderCircle v-if="busy" :size="16" class="animate-spin" />
       Применить

@@ -8,7 +8,7 @@ import ListToolbar from '@/components/ListToolbar.vue'
 import TrackList from '@/components/TrackList.vue'
 import { useTags } from '@/composables/useTags'
 import { useDensity } from '@/composables/useDensity'
-import { PAGE_SIZES, useTracks } from '@/composables/useTracks'
+import { PAGE_SIZES, TRUNCATED_LIMIT, useTracks } from '@/composables/useTracks'
 
 const { genreTags, moodTags, allTags, tagLabel, loadTags } = useTags()
 const { compact, toggleCompact } = useDensity()
@@ -172,8 +172,14 @@ function backNavigation() {
   void load()
 }
 
+function reloadTags() {
+  // Сбой загрузки справочника показывается в панели фильтров; здесь гасим
+  // отклонённый промис, чтобы он не всплыл как необработанная ошибка.
+  void loadTags().catch(() => {})
+}
+
 onMounted(() => {
-  void loadTags()
+  reloadTags()
   void load()
   window.addEventListener('popstate', backNavigation)
 })
@@ -215,6 +221,7 @@ onUnmounted(() => {
           @toggle="toggleFilter"
           @untagged="changeUntagged"
           @reset="clearFilters"
+          @reload-tags="reloadTags"
         />
       </div>
     </div>
@@ -266,10 +273,10 @@ onUnmounted(() => {
       />
 
       <p v-if="truncated" role="status" class="mb-3 rounded-lg border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
-        Показаны первые 900 треков по этим фильтрам — уточните фильтры, чтобы отсортировать весь список.
+        Показаны первые {{ TRUNCATED_LIMIT }} треков по этим фильтрам — уточните фильтры, чтобы отсортировать весь список.
       </p>
 
-      <TrackList :rows="rows" :loading="loading" :compact="compact" @changed="load">
+      <TrackList :rows="rows" :loading="loading" :compact="compact" :error="Boolean(error)" @changed="load">
         <template #empty>
           <template v-if="hasActiveFilters">
             <p class="text-sm text-muted-foreground">Ничего не найдено по этим фильтрам.</p>

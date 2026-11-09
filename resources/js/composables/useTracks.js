@@ -20,6 +20,11 @@ export const SORT_OPTIONS = [
 const SERVER_PAGE_SIZE = 30
 const MAX_PAGES = 30 // не более 30 запросов при сборке полного списка
 
+// Сколько строк реально попадает в клиентский список при сборке полного набора.
+// Используется в предупреждениях интерфейса, чтобы текст не разъезжался с
+// константами пагинации.
+export const TRUNCATED_LIMIT = MAX_PAGES * SERVER_PAGE_SIZE
+
 // Мутации треков живут на web-маршрутах (CSRF), но описаны здесь рядом с
 // чтением: компонентам не нужно знать URL и форму запроса.
 export function saveTrackTags(trackId, tagIds) {
