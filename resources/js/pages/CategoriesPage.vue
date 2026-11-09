@@ -51,7 +51,11 @@ onMounted(loadTags)
       <form @submit.prevent="addTag">
         <label class="mb-3 block text-sm font-medium">
           Тип
-          <select v-model="newTagType" class="mt-2 h-9 w-full rounded-md border border-input bg-background px-2 text-sm">
+          <select
+            v-model="newTagType"
+            aria-label="Тип категории"
+            class="mt-2 h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+          >
             <option value="genre">Жанр</option>
             <option value="mood">Настроение</option>
           </select>
@@ -70,7 +74,7 @@ onMounted(loadTags)
       </form>
     </Card>
 
-    <div class="grid gap-5">
+    <div class="grid gap-5" :aria-busy="loading ? 'true' : undefined">
       <div v-if="loadError" role="alert" class="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
         {{ loadError }}
         <Button variant="ghost" size="sm" class="ml-2" @click="loadTags">Повторить</Button>
@@ -85,7 +89,11 @@ onMounted(loadTags)
           <LoaderCircle v-if="loading" :size="18" class="animate-spin text-muted-foreground" aria-hidden="true" />
         </div>
 
-        <p v-if="!loading && !group.tags.length" class="text-sm text-muted-foreground">Категорий этого типа пока нет. Добавьте первую слева.</p>
+        <div v-if="loading" role="status" aria-live="polite" aria-busy="true" class="space-y-2">
+          <span class="sr-only">Загрузка категорий…</span>
+          <span v-for="n in 3" :key="n" aria-hidden="true" class="block h-10 animate-pulse rounded bg-foreground/5"></span>
+        </div>
+        <p v-else-if="!group.tags.length" class="text-sm text-muted-foreground">Категорий этого типа пока нет. Добавьте первую слева.</p>
         <div v-else>
           <p class="mb-2 text-xs text-muted-foreground">Русское название можно изменить — оригинал и фильтры сохраняются.</p>
           <TagTranslationRow v-for="tag in group.tags" :key="tag.id" :tag="tag" @saved="loadTags" />

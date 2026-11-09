@@ -33,12 +33,12 @@
   --secondary: #f2f1ec;
   --secondary-foreground: #3f443f;
   --muted: #f5f4f0;
-  --muted-foreground: #747772;
+  --muted-foreground: #706e66;
   --accent: #ebeae5;
   --accent-foreground: #252923;
   --border: #e4e5df;
-  --input: #d9dbd4;
-  --ring: #8da18b;
+  --input: #8f8b83;
+  --ring: #7d8f78;
   --destructive: #c13f38;
 }
 body { margin: 0; background: var(--background); color: var(--foreground); font-family: var(--font-sans); }

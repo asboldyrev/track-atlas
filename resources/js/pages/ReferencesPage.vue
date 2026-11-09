@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { ChevronLeft, ChevronRight, Link2, Copy, RotateCcw, X } from '@lucide/vue'
+import { ChevronDown, ChevronLeft, ChevronRight, Link2, Copy, RotateCcw, SlidersHorizontal, X } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import FilterPanel from '@/components/FilterPanel.vue'
@@ -17,6 +17,8 @@ const pagination = reactive({ total: 0, current_page: 1, last_page: 1 })
 const loading = ref(false)
 const error = ref('')
 const linkCopied = ref(false)
+// Mobile: filters start collapsed so the references list is the first thing on screen.
+const filtersOpen = ref(false)
 let requestNumber = 0
 let searchTimer
 let copyTimer
@@ -158,15 +160,35 @@ onUnmounted(() => {
 <template>
   <div class="grid items-start gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
     <div class="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
-      <FilterPanel
-        :filters="filters"
-        :genre-tags="genreTags"
-        :mood-tags="moodTags"
-        @search="searchChanged"
-        @toggle="toggleFilter"
-        @untagged="changeUntagged"
-        @reset="clearFilters"
-      />
+      <button
+        type="button"
+        class="flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-card px-4 py-3 text-sm font-medium lg:hidden"
+        aria-controls="references-filters"
+        :aria-expanded="filtersOpen"
+        @click="filtersOpen = !filtersOpen"
+      >
+        <span class="inline-flex items-center gap-2">
+          <SlidersHorizontal :size="16" aria-hidden="true" />
+          Фильтры
+          <span v-if="activeChips.length" class="text-muted-foreground">({{ activeChips.length }})</span>
+        </span>
+        <ChevronDown :size="16" aria-hidden="true" :class="filtersOpen ? 'rotate-180' : ''" class="transition-transform" />
+      </button>
+
+      <div
+        id="references-filters"
+        :class="filtersOpen ? 'mt-3 lg:mt-0' : 'hidden lg:block'"
+      >
+        <FilterPanel
+          :filters="filters"
+          :genre-tags="genreTags"
+          :mood-tags="moodTags"
+          @search="searchChanged"
+          @toggle="toggleFilter"
+          @untagged="changeUntagged"
+          @reset="clearFilters"
+        />
+      </div>
     </div>
 
     <Card class="min-w-0 p-5">
@@ -189,10 +211,10 @@ onUnmounted(() => {
           :key="chip.key"
           type="button"
           class="inline-flex items-center gap-1 rounded-full border border-border bg-secondary px-2.5 py-1 text-xs hover:bg-accent"
+          :aria-label="'Снять фильтр: ' + chip.label"
           @click="removeChip(chip)"
         >
           {{ chip.label }} <X :size="12" aria-hidden="true" />
-          <span class="sr-only">Снять фильтр</span>
         </button>
         <Button variant="ghost" size="sm" class="ml-auto" @click="clearFilters"><RotateCcw :size="14" /> Сбросить всё</Button>
       </div>

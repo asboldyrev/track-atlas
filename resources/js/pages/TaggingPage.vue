@@ -214,7 +214,12 @@ onMounted(loadQueue)
         <div class="flex items-end gap-2">
           <label class="text-sm font-medium">
             Показать
-            <select :value="queue.untagged" class="mt-2 block h-9 rounded-md border border-input bg-background px-2 text-sm" @change="changeQueueMode($event.target.value)">
+            <select
+              :value="queue.untagged"
+              aria-label="Показать треки"
+              class="mt-2 block h-9 rounded-md border border-input bg-background px-2 text-sm"
+              @change="changeQueueMode($event.target.value)"
+            >
               <option value="all">Без любых категорий</option>
               <option value="genre">Без жанров</option>
               <option value="mood">Без настроений</option>

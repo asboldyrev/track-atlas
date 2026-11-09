@@ -31,7 +31,13 @@ async function submit() {
         <p class="truncate text-sm font-medium">{{ tag.name }}</p>
         <p class="text-xs text-muted-foreground">{{ tag.slug }}</p>
       </div>
-      <Input v-model="value" placeholder="Перевод на русский" class="sm:flex-1" @keyup.enter="submit" />
+      <Input
+        v-model="value"
+        :aria-label="'Перевод на русский: ' + tag.name"
+        placeholder="Перевод на русский"
+        class="sm:flex-1"
+        @keyup.enter="submit"
+      />
       <Button size="sm" :disabled="save.busy.value" @click="submit">
         <LoaderCircle v-if="save.busy.value" :size="15" class="animate-spin" />
         Сохранить

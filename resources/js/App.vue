@@ -21,6 +21,11 @@ const navItems = [
 </script>
 
 <template>
+  <a
+    href="#main"
+    class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
+  >Перейти к содержимому</a>
+
   <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
     <header class="mb-6 flex flex-wrap items-center justify-between gap-4">
       <div class="flex items-center gap-3">
@@ -44,7 +49,7 @@ const navItems = [
       >{{ item.label }}</a>
     </nav>
 
-    <main>
+    <main id="main" tabindex="-1" class="focus:outline-none">
       <ReferencesPage v-if="current === 'references'" />
       <CategoriesPage v-else-if="current === 'categories'" />
       <TaggingPage v-else-if="current === 'tagging'" />

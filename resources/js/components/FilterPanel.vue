@@ -36,7 +36,11 @@ const { tagLabel } = useCatalog()
       <p v-if="!genreTags.length" class="text-sm text-muted-foreground">Пока нет жанров</p>
       <div class="max-h-56 space-y-2 overflow-y-auto pr-1">
         <label v-for="tag in genreTags" :key="tag.id" class="flex cursor-pointer items-center gap-2 text-sm">
-          <Checkbox :model-value="filters.genres.includes(tag.id)" @update:model-value="emit('toggle', 'genres', tag.id, $event)" />
+          <Checkbox
+            :model-value="filters.genres.includes(tag.id)"
+            :aria-label="'Жанр: ' + tagLabel(tag)"
+            @update:model-value="emit('toggle', 'genres', tag.id, $event)"
+          />
           <span>{{ tagLabel(tag) }}</span>
         </label>
       </div>
@@ -47,7 +51,11 @@ const { tagLabel } = useCatalog()
       <p v-if="!moodTags.length" class="text-sm text-muted-foreground">Пока нет настроений</p>
       <div class="max-h-56 space-y-2 overflow-y-auto pr-1">
         <label v-for="tag in moodTags" :key="tag.id" class="flex cursor-pointer items-center gap-2 text-sm">
-          <Checkbox :model-value="filters.moods.includes(tag.id)" @update:model-value="emit('toggle', 'moods', tag.id, $event)" />
+          <Checkbox
+            :model-value="filters.moods.includes(tag.id)"
+            :aria-label="'Настроение: ' + tagLabel(tag)"
+            @update:model-value="emit('toggle', 'moods', tag.id, $event)"
+          />
           <span>{{ tagLabel(tag) }}</span>
         </label>
       </div>
@@ -55,7 +63,12 @@ const { tagLabel } = useCatalog()
 
     <label class="block text-sm font-medium">
       Полнота разметки
-      <select :value="filters.untagged" class="mt-2 h-9 w-full rounded-md border border-input bg-background px-2 text-sm" @change="emit('untagged', $event.target.value)">
+      <select
+        :value="filters.untagged"
+        aria-label="Полнота разметки"
+        class="mt-2 h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+        @change="emit('untagged', $event.target.value)"
+      >
         <option value="">Все треки</option>
         <option value="genre">Без жанров</option>
         <option value="mood">Без настроений</option>

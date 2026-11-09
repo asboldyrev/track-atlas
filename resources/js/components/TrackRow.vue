@@ -98,20 +98,30 @@ async function decideSuggestion(suggestion, decision) {
       <Button
         variant="outline"
         size="sm"
+        :aria-label="'Теги трека: ' + (track.artist ? track.artist + ' — ' : '') + track.title"
         :aria-expanded="editing"
+        :aria-controls="'track-tags-' + track.id"
         @click="toggleEditor"
       >
-        <Tags :size="15" /> {{ editing ? 'Закрыть' : 'Теги' }}
+        <Tags :size="15" aria-hidden="true" /> {{ editing ? 'Закрыть' : 'Теги' }}
       </Button>
     </div>
 
-    <div v-if="editing" class="ml-0 mt-4 rounded-lg border border-border bg-muted/50 p-4 sm:ml-7">
+    <div
+      v-if="editing"
+      :id="'track-tags-' + track.id"
+      class="ml-0 mt-4 rounded-lg border border-border bg-muted/50 p-4 sm:ml-7"
+    >
       <div v-for="(group, title) in { 'Жанры': genreTags, 'Настроения': moodTags }" :key="title" class="mb-4">
         <h4 class="mb-2 text-xs font-semibold">{{ title }}</h4>
         <p v-if="!group.length" class="text-xs text-muted-foreground">Категорий этого типа пока нет.</p>
         <div class="flex flex-wrap gap-x-4 gap-y-2">
           <label v-for="tag in group" :key="tag.id" class="flex cursor-pointer items-center gap-2 text-sm">
-            <Checkbox :model-value="editingTags.includes(tag.id)" @update:model-value="toggleEditTag(tag.id, $event)" />
+            <Checkbox
+              :model-value="editingTags.includes(tag.id)"
+              :aria-label="'Категория ' + (title === 'Жанры' ? 'жанр' : 'настроение') + ': ' + tagLabel(tag)"
+              @update:model-value="toggleEditTag(tag.id, $event)"
+            />
             {{ tagLabel(tag) }}
           </label>
         </div>
