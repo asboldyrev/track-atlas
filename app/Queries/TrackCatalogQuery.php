@@ -67,6 +67,14 @@ class TrackCatalogQuery
         $column = $columns[$sort] ?? $columns['artist'];
         $direction = ($filters['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc';
 
+        // Треки без альбома (album IS NULL) — всегда в конце, независимо от
+        // направления: «album IS NULL» даёт 0 для заполненных и 1 для пустых,
+        // поэтому asc-условие перед основной сортировкой оттесняет NULL вниз
+        // и при asc, и при desc.
+        if ($column === 'album') {
+            $query->orderByRaw('album IS NULL');
+        }
+
         $query->orderBy($column, $direction);
 
         foreach ([['artist', 'asc'], ['title', 'asc'], ['tracks.id', 'asc']] as [$tieBreak, $tieDirection]) {

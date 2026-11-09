@@ -251,4 +251,52 @@ class TracksApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('tracks.total', 0);
     }
+
+    public function test_sort_by_title_desc_returns_the_reverse_title_order(): void
+    {
+        foreach (['Delta', 'Alpha', 'Charlie', 'Bravo'] as $index => $title) {
+            Track::create([
+                'path' => 'title-'.$index.'.mp3',
+                'title' => $title,
+                'artist' => 'Same',
+                'album' => 'One',
+                'size' => 1,
+                'file_mtime' => 1,
+            ]);
+        }
+
+        $titles = array_column(
+            $this->getJson('/api/tracks?sort=title&dir=desc&per_page=100')->assertOk()->json('tracks.data'),
+            'title',
+        );
+
+        $this->assertSame(['Delta', 'Charlie', 'Bravo', 'Alpha'], $titles);
+    }
+
+    public function test_tracks_without_album_sort_last_in_both_directions(): void
+    {
+        // album = NULL: пустой альбом идёт в конец и при asc, и при desc.
+        foreach ([['Alpha', 'A'], ['Bravo', 'B'], ['Nothing', null], ['Zero', 'Z']] as [$title, $album]) {
+            Track::create([
+                'path' => 'album-'.$title.'.mp3',
+                'title' => $title,
+                'artist' => 'Same',
+                'album' => $album,
+                'size' => 1,
+                'file_mtime' => 1,
+            ]);
+        }
+
+        $asc = array_column(
+            $this->getJson('/api/tracks?sort=album&dir=asc&per_page=100')->assertOk()->json('tracks.data'),
+            'title',
+        );
+        $this->assertSame(['Alpha', 'Bravo', 'Zero', 'Nothing'], $asc);
+
+        $desc = array_column(
+            $this->getJson('/api/tracks?sort=album&dir=desc&per_page=100')->assertOk()->json('tracks.data'),
+            'title',
+        );
+        $this->assertSame(['Zero', 'Bravo', 'Alpha', 'Nothing'], $desc);
+    }
 }
