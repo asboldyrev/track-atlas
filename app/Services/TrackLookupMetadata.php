@@ -41,11 +41,13 @@ class TrackLookupMetadata
         }
 
         $cleanTitle = trim($cleanTitle, " \t\n\r\0\x0B\"'“”");
+
         return [
             'artist' => $cleanArtist !== '' ? $cleanArtist : $originalArtist,
             'title' => $cleanTitle !== '' ? $cleanTitle : $this->safeUtf8($title),
         ];
     }
+
     private function safeUtf8(string $value): string
     {
         if (mb_check_encoding($value, 'UTF-8')) {

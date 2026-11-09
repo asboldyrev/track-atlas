@@ -1,7 +1,7 @@
 <?php
 
-use App\Http\Controllers\TrackController;
 use App\Http\Controllers\AiClassificationController;
+use App\Http\Controllers\TrackController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [TrackController::class, 'index'])->name('tracks.index');

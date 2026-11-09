@@ -21,6 +21,7 @@ class EnrichMusic extends Command
         $limit = filter_var($this->option('limit'), FILTER_VALIDATE_INT);
         if ($limit === false || $limit < 1 || $limit > 30) {
             $this->error('--limit must be between 1 and 30.');
+
             return self::FAILURE;
         }
 
@@ -31,6 +32,7 @@ class EnrichMusic extends Command
         if ($trackId = $this->option('track')) {
             if (! ctype_digit((string) $trackId)) {
                 $this->error('--track must be a positive integer.');
+
                 return self::FAILURE;
             }
             $query->whereKey((int) $trackId);
@@ -43,6 +45,7 @@ class EnrichMusic extends Command
         $tracks = $query->limit($limit)->get();
         if ($tracks->isEmpty()) {
             $this->info('No eligible tracks. Use --force to re-check existing suggestions.');
+
             return self::SUCCESS;
         }
 
@@ -77,6 +80,7 @@ class EnrichMusic extends Command
         }
 
         $this->info("Processed: $checked; errors: $failed. Existing track tags were not changed.");
+
         return $failed ? self::FAILURE : self::SUCCESS;
     }
 }

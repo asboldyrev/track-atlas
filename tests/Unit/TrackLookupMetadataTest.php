@@ -41,6 +41,7 @@ class TrackLookupMetadataTest extends TestCase
             $lookup->prepare('Artist', 'Song - Part Two'),
         );
     }
+
     public function test_malformed_utf8_is_replaced_before_unicode_regex_processing(): void
     {
         $lookup = app(TrackLookupMetadata::class);
@@ -54,5 +55,4 @@ class TrackLookupMetadataTest extends TestCase
         $this->assertStringContainsString('�', $actual['artist']);
         $this->assertSame('The Seed', $actual['title']);
     }
-
 }

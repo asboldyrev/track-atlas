@@ -106,6 +106,7 @@ class MusicBrainzClient
         }
 
         $clean = trim($clean, " \t\n\r\0\x0B\"'“”");
+
         return $clean !== '' ? $clean : $original;
     }
 

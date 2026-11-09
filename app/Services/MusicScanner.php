@@ -3,9 +3,9 @@
 namespace App\Services;
 
 use App\Models\Track;
+use FilesystemIterator;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
-use FilesystemIterator;
 use SplFileInfo;
 
 class MusicScanner
@@ -53,6 +53,7 @@ class MusicScanner
                         $previous->update(['is_missing' => false]);
                     }
                     $stats['unchanged']++;
+
                     continue;
                 }
 

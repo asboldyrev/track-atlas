@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Track;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class OpenRouterClassifier
@@ -15,7 +16,7 @@ class OpenRouterClassifier
      * Makes one paid request. Nothing is saved until the whole reply has been
      * validated, and the model never receives paths or audio bytes.
      *
-     * @param Collection<int, Track> $tracks
+     * @param  Collection<int, Track>  $tracks
      */
     public function classify(Collection $tracks): array
     {
@@ -47,7 +48,7 @@ class OpenRouterClassifier
                 }
             }
             if ($invalidFields !== []) {
-                \Illuminate\Support\Facades\Log::warning('OpenRouter input contains invalid UTF-8; substituting malformed bytes', [
+                Log::warning('OpenRouter input contains invalid UTF-8; substituting malformed bytes', [
                     'track_id' => $track->id,
                     'fields' => $invalidFields,
                 ]);

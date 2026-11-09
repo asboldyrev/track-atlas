@@ -4,10 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Tag;
 use App\Models\Track;
+use App\Services\GenreNormalizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use App\Services\GenreNormalizer;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class TrackController extends Controller
@@ -102,6 +103,7 @@ class TrackController extends Controller
             'name_ru' => ['present', 'nullable', 'string', 'max:120'],
         ]);
         $tag->update(['name_ru' => trim($data['name_ru'] ?? '') ?: null]);
+
         return response()->json(['tag' => $tag->fresh()]);
     }
 
@@ -112,12 +114,13 @@ class TrackController extends Controller
             'name' => ['required', 'string', 'max:80'],
         ]);
         $name = $data['type'] === 'genre' ? $normalizer->canonical($data['name']) : trim($data['name']);
-        $slug = $data['type'] === 'genre' ? $normalizer->slug($name) : \Illuminate\Support\Str::slug($name);
+        $slug = $data['type'] === 'genre' ? $normalizer->slug($name) : Str::slug($name);
         if ($slug === '') {
             return response()->json(['message' => 'Введите название категории.'], 422);
         }
 
         $tag = Tag::firstOrCreate(['type' => $data['type'], 'slug' => $slug], ['name' => $name]);
+
         return response()->json(['tag' => $tag], 201);
     }
 }

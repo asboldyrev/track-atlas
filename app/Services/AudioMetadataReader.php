@@ -28,7 +28,7 @@ class AudioMetadataReader
         }
 
         try {
-            $data = (new \getID3())->analyze($path);
+            $data = (new \getID3)->analyze($path);
             \getid3_lib::CopyTagsToComments($data);
             $comments = is_array($data['comments'] ?? null) ? $data['comments'] : [];
 
@@ -63,6 +63,7 @@ class AudioMetadataReader
                 $clean[] = $value;
             }
         }
+
         return $clean;
     }
 }

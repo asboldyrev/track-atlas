@@ -1,11 +1,11 @@
 <?php
 
+use App\Console\Commands\EnrichMusic;
+use App\Console\Commands\ScanMusic;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
-use App\Console\Commands\ScanMusic;
-use App\Console\Commands\EnrichMusic;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(

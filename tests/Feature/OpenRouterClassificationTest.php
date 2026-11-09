@@ -2,10 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Models\AiUsageLog;
 use App\Models\MetadataSuggestion;
 use App\Models\Tag;
 use App\Models\Track;
+use App\Services\OpenRouterClassifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -160,6 +160,7 @@ class OpenRouterClassificationTest extends TestCase
         $this->putJson('/ai/suggestions/'.$proposal->id, ['decision' => 'accept'])->assertUnprocessable();
         $this->assertDatabaseCount('tags', 0);
     }
+
     public function test_retry_empty_suggestion_reclassifies_without_changing_active_tags(): void
     {
         config(['openrouter.key' => 'fake-secret']);
@@ -261,7 +262,7 @@ class OpenRouterClassificationTest extends TestCase
             ['id' => $track->id, 'genres' => ['Electronic'], 'moods' => ['Calm']],
         ]);
 
-        $result = app(\App\Services\OpenRouterClassifier::class)->classify(collect([$track]));
+        $result = app(OpenRouterClassifier::class)->classify(collect([$track]));
 
         $this->assertSame(['Electronic'], $result['tracks'][$track->id]['genres']);
         Http::assertSentCount(1);
@@ -279,5 +280,4 @@ class OpenRouterClassificationTest extends TestCase
             return true;
         });
     }
-
 }

@@ -64,6 +64,7 @@ class AiClassificationController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         } catch (\Throwable $e) {
             report($e);
+
             return response()->json(['message' => 'Не удалось получить классификацию OpenRouter.'], 502);
         }
 

@@ -74,6 +74,7 @@ class MusicBrainzEnrichmentTest extends TestCase
         $this->assertDatabaseCount('tags', 0);
         Http::assertSentCount(1);
     }
+
     public function test_video_title_decoration_is_removed_only_for_lookup(): void
     {
         $track = Track::create([
@@ -163,5 +164,4 @@ class MusicBrainzEnrichmentTest extends TestCase
         $this->assertSame('Eminem - Mockingbird [Official Music Video]', $track->fresh()->title);
         Http::assertSentCount(3);
     }
-
 }
