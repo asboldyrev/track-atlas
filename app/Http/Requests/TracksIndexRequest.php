@@ -23,9 +23,11 @@ class TracksIndexRequest extends FormRequest
         return [
             'search' => ['sometimes', 'nullable', 'string', 'max:'.(int) config('api.limits.search_max_length')],
             'genres' => ['sometimes', 'array'],
-            'genres.*' => ['integer', 'exists:tags,id'],
+            // id обязан принадлежать своему типу: жанр из moods[] (или наоборот)
+            // раньше принимался и молча давал пустую выборку.
+            'genres.*' => ['integer', Rule::exists('tags', 'id')->where('type', 'genre')],
             'moods' => ['sometimes', 'array'],
-            'moods.*' => ['integer', 'exists:tags,id'],
+            'moods.*' => ['integer', Rule::exists('tags', 'id')->where('type', 'mood')],
             'untagged' => ['sometimes', Rule::in(['genre', 'mood', 'all'])],
             'page' => ['sometimes', 'integer', 'min:1'],
         ];

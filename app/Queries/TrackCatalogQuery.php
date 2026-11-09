@@ -45,7 +45,9 @@ class TrackCatalogQuery
             }
         }
 
-        return $query->orderBy('artist')->orderBy('title');
+        // Тай-брейк по id: при одинаковых artist/title порядок строк иначе не
+        // определён, и пагинация может повторить или пропустить запись.
+        return $query->orderBy('artist')->orderBy('title')->orderBy('tracks.id');
     }
 
     /**

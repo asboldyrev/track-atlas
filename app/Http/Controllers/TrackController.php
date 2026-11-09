@@ -70,6 +70,8 @@ class TrackController extends Controller
 
         $tag = Tag::firstOrCreate(['type' => $data['type'], 'slug' => $slug], ['name' => $name]);
 
-        return response()->json(['tag' => $tag], 201);
+        // 201 — только для действительно созданной категории; повторное создание
+        // возвращает существующую с 200, чтобы клиент отличал обе ситуации.
+        return response()->json(['tag' => $tag], $tag->wasRecentlyCreated ? 201 : 200);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\LikePattern;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -58,8 +59,12 @@ class Track extends Model
 
         $match = self::ftsMatchExpression($term);
         if ($match === null) {
-            $query->where(fn ($q) => $q->where('title', 'like', '%'.$term.'%')
-                ->orWhere('artist', 'like', '%'.$term.'%'));
+            // Короткие запросы уходят в LIKE. Подстановочные знаки экранированы,
+            // иначе «%» или «_» совпадали бы с любой строкой.
+            $pattern = LikePattern::contains($term);
+            $query->where(fn ($q) => $q
+                ->whereRaw(LikePattern::expression('title'), [$pattern])
+                ->orWhereRaw(LikePattern::expression('artist'), [$pattern]));
 
             return;
         }
