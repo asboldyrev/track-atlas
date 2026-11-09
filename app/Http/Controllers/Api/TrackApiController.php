@@ -36,8 +36,7 @@ class TrackApiController extends Controller
             ->with(['tags', 'metadataSuggestions' => fn ($q) => $q->where('provider', 'openrouter')]);
 
         if ($search = ($filters['search'] ?? null)) {
-            $query->where(fn ($q) => $q->where('title', 'like', '%'.$search.'%')
-                ->orWhere('artist', 'like', '%'.$search.'%'));
+            $query->search($search);
         }
 
         foreach (['genres' => 'genre', 'moods' => 'mood'] as $key => $type) {

@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\Tag;
 use App\Models\Track;
 use App\Services\GenreNormalizer;
+use App\Services\TagDecisionSynchronizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -33,8 +35,7 @@ class TrackController extends Controller
         $query = Track::query()->where('is_missing', false)->with(['tags', 'metadataSuggestions' => fn ($query) => $query->where('provider', 'openrouter')]);
 
         if ($search = ($filters['search'] ?? null)) {
-            $query->where(fn ($q) => $q->where('title', 'like', '%'.$search.'%')
-                ->orWhere('artist', 'like', '%'.$search.'%'));
+            $query->search($search);
         }
 
         foreach (['genres' => 'genre', 'moods' => 'mood'] as $key => $type) {
@@ -59,20 +60,20 @@ class TrackController extends Controller
         ]);
     }
 
-    public function update(Request $request, Track $track): JsonResponse
+    public function update(Request $request, Track $track, TagDecisionSynchronizer $decisions): JsonResponse
     {
         $data = $request->validate([
             'tags' => ['present', 'array'],
             'tags.*' => ['integer', 'distinct', 'exists:tags,id'],
         ]);
 
-        $track->tags()->sync(collect($data['tags'])
-            ->mapWithKeys(fn ($id) => [$id => ['source' => 'manual']])->all());
+        $tagIds = array_map('intval', $data['tags']);
+        DB::transaction(fn () => $decisions->replace($track, $tagIds));
 
         return response()->json(['ok' => true]);
     }
 
-    public function batchTags(Request $request): JsonResponse
+    public function batchTags(Request $request, TagDecisionSynchronizer $decisions): JsonResponse
     {
         $data = $request->validate([
             'tracks' => ['required', 'array', 'min:1', 'max:'.(int) config('api.limits.batch_tracks_max')],
@@ -82,19 +83,19 @@ class TrackController extends Controller
             'mode' => ['required', Rule::in(['add', 'remove'])],
         ]);
 
-        $tagIds = $data['tags'];
-        $tracks = Track::whereIn('id', $data['tracks'])->get();
-        foreach ($tracks as $track) {
-            if ($data['mode'] === 'add') {
-                $track->tags()->syncWithoutDetaching(
-                    collect($tagIds)->mapWithKeys(fn ($id) => [$id => ['source' => 'manual']])->all()
-                );
-            } else {
-                $track->tags()->detach($tagIds);
-            }
-        }
+        $trackIds = array_map('intval', $data['tracks']);
+        $tagIds = array_map('intval', $data['tags']);
 
-        return response()->json(['updated' => $tracks->count()]);
+        // Один транзакционный блок на весь батч: частичное применение недопустимо.
+        DB::transaction(function () use ($data, $trackIds, $tagIds, $decisions) {
+            if ($data['mode'] === 'add') {
+                $decisions->accept($trackIds, $tagIds);
+            } else {
+                $decisions->ignore($trackIds, $tagIds);
+            }
+        });
+
+        return response()->json(['updated' => count($trackIds)]);
     }
 
     public function updateTranslation(Request $request, Tag $tag): JsonResponse

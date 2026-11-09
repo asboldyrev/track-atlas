@@ -14,6 +14,9 @@
 ### track_tag
 `track_id`, `tag_id`, `source` (manual|file|openrouter|search|audio), timestamps; уникальность (`track_id`, `tag_id`). Ручное назначение имеет приоритет. Для источников, конкурирующих за один тег, по необходимости позже вынести provenance в отдельную сущность.
 
+### track_tag_decision
+`track_id`, `tag_id`, `decision` (accepted|ignored), timestamps; уникальность (`track_id`, `tag_id`). Хранит **решение человека** по паре трек-тег отдельно от `source`: ручная разметка больше не переписывает источник связи, а снятая вручную метка (`ignored`) не возвращается сканером. Реализовано в B8.
+
 ### tag_suggestions (добавить при реализации AI)
 `id`, `track_id`, `tag_id` или `proposed_name`, `type`, `provider`, `model`, `confidence` nullable, `status` (pending|accepted|rejected), `details` JSON, timestamps. **Не смешивать** неподтверждённые рекомендации с активной пользовательской разметкой.
 
@@ -34,7 +37,7 @@
 ## 4. Потоки
 **Импорт:** путь → Artisan scanner → getID3/имя файла → upsert tracks → нормализация доступных жанров → SQLite → Vue.
 
-**Поиск:** Vue-фильтры → серверный запрос SQLite по `EXISTS`/joins → пагинированные `Artist — Title`.
+**Поиск:** Vue-фильтры → серверный запрос SQLite по `EXISTS`/joins → пагинированные `Artist — Title`. Свободный текст идёт через FTS5 (`tracks_fts`, внешний контент `tracks`, синхронизация триггерами); короткие запросы (1–2 символа) — через `LIKE`.
 
 **AI (опционально):** выбор записей → PHP запрос к провайдеру → валидация JSON → таблица suggestions → подтверждение в UI → track_tag.
 
