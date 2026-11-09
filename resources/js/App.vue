@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import { Music2 } from '@lucide/vue'
+import { Music2, Database } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import ReferencesPage from '@/pages/ReferencesPage.vue'
 import CategoriesPage from '@/pages/CategoriesPage.vue'
@@ -35,7 +35,11 @@ const navItems = [
           <p class="text-sm text-muted-foreground">Музыкальные референсы по жанрам и настроениям</p>
         </div>
       </div>
-      <Badge variant="outline" class="gap-2"><span class="size-2 rounded-full bg-emerald-500" aria-hidden="true"></span> Локальная библиотека</Badge>
+      <Badge variant="outline" class="gap-2">
+        <Database :size="14" aria-hidden="true" />
+        <span class="size-2 rounded-full bg-emerald-500" aria-hidden="true"></span>
+        Локальная библиотека
+      </Badge>
     </header>
 
     <nav aria-label="Разделы" class="mb-6 flex flex-wrap gap-1 border-b border-border">

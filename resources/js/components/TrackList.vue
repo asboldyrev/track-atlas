@@ -7,8 +7,10 @@ const props = defineProps({
   loading: { type: Boolean, default: false },
   selectable: { type: Boolean, default: false },
   selected: { type: Array, default: () => [] },
+  compact: { type: Boolean, default: false },
+  activeId: { type: [Number, String], default: null },
 })
-const emit = defineEmits(['toggle-select', 'toggle-all', 'changed'])
+const emit = defineEmits(['toggle-select', 'toggle-all', 'changed', 'activate'])
 
 function isSelected(id) {
   return props.selected.includes(id)
@@ -39,7 +41,8 @@ function allSelected() {
         v-for="n in 4"
         :key="n"
         aria-hidden="true"
-        class="border-b border-border py-4 last:border-0"
+        class="border-b border-border last:border-0"
+        :class="compact ? 'py-2' : 'py-4'"
       >
         <div class="flex items-start gap-3">
           <div v-if="selectable" class="mt-1 size-4 shrink-0 animate-pulse rounded bg-foreground/10"></div>
@@ -66,8 +69,11 @@ function allSelected() {
       :track="track"
       :selectable="selectable"
       :selected="isSelected(track.id)"
+      :compact="compact"
+      :active="activeId === track.id"
       @toggle-select="emit('toggle-select', track.id, $event)"
       @changed="emit('changed')"
+      @activate="emit('activate', track.id)"
     />
   </div>
 </template>

@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue'
-import { CheckCheck, LoaderCircle, Tags } from '@lucide/vue'
+import { CheckCheck, LoaderCircle, Smile, Tag, Tags } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
@@ -11,8 +11,10 @@ const props = defineProps({
   track: { type: Object, required: true },
   selectable: { type: Boolean, default: false },
   selected: { type: Boolean, default: false },
+  compact: { type: Boolean, default: false },
+  active: { type: Boolean, default: false },
 })
-const emit = defineEmits(['toggle-select', 'changed'])
+const emit = defineEmits(['toggle-select', 'changed', 'activate'])
 
 const { genreTags, moodTags, tagLabel, translatedLabel, mutate } = useCatalog()
 
@@ -59,28 +61,48 @@ async function decideSuggestion(suggestion, decision) {
 </script>
 
 <template>
-  <div class="border-b border-border py-4 last:border-0">
+  <div
+    :id="'track-row-' + track.id"
+    tabindex="-1"
+    class="border-b border-border outline-none transition-colors last:border-0 focus-visible:ring-2 focus-visible:ring-ring"
+    :class="[compact ? 'py-2' : 'py-4', active ? 'bg-secondary/70' : '']"
+    :aria-current="active ? 'true' : undefined"
+    @focus="emit('activate')"
+  >
     <div class="flex items-start gap-3">
       <Checkbox
         v-if="selectable"
         :model-value="selected"
-        class="mt-1"
+        :class="compact ? 'mt-0.5' : 'mt-1'"
         :aria-label="'Выбрать трек: ' + (track.artist ? track.artist + ' — ' : '') + track.title"
         @update:model-value="emit('toggle-select', $event)"
       />
       <div class="min-w-0 flex-1">
         <h3 class="break-words text-sm font-semibold">{{ track.artist ? track.artist + ' — ' : '' }}{{ track.title }}</h3>
-        <p v-if="track.album" class="mt-1 text-xs text-muted-foreground">{{ track.album }}</p>
-        <div class="mt-2 flex flex-wrap gap-1.5">
-          <Badge v-for="tag in track.tags" :key="tag.id" :variant="tag.type === 'mood' ? 'outline' : 'secondary'">{{ tagLabel(tag) }}</Badge>
+        <p v-if="track.album" :class="compact ? 'text-xs text-muted-foreground' : 'mt-1 text-xs text-muted-foreground'">{{ track.album }}</p>
+        <div :class="compact ? 'mt-1 flex flex-wrap gap-1' : 'mt-2 flex flex-wrap gap-1.5'">
+          <Badge v-for="tag in track.tags" :key="tag.id" :variant="tag.type === 'mood' ? 'outline' : 'secondary'" class="gap-1">
+            <Smile v-if="tag.type === 'mood'" :size="12" aria-hidden="true" />
+            <Tag v-else :size="12" aria-hidden="true" />
+            <span class="sr-only">{{ tag.type === 'mood' ? 'Настроение: ' : 'Жанр: ' }}</span>
+            {{ tagLabel(tag) }}
+          </Badge>
           <span v-if="!track.tags.length" class="text-xs text-muted-foreground">Без категорий</span>
         </div>
 
         <div v-for="suggestion in pendingSuggestions()" :key="suggestion.id" class="mt-3 rounded-lg border border-border bg-muted/60 p-3 text-xs">
           <div class="mb-2 font-semibold">Предложение OpenRouter <span class="font-normal text-muted-foreground">({{ suggestion.model }})</span></div>
           <div class="mb-2 flex flex-wrap gap-1">
-            <Badge v-for="genre in suggestion.genres || []" :key="'g' + genre" variant="secondary">{{ translatedLabel('genre', genre) }}</Badge>
-            <Badge v-for="mood in suggestion.moods || []" :key="'m' + mood" variant="outline">{{ translatedLabel('mood', mood) }}</Badge>
+            <Badge v-for="genre in suggestion.genres || []" :key="'g' + genre" variant="secondary" class="gap-1">
+              <Tag :size="12" aria-hidden="true" />
+              <span class="sr-only">Жанр: </span>
+              {{ translatedLabel('genre', genre) }}
+            </Badge>
+            <Badge v-for="mood in suggestion.moods || []" :key="'m' + mood" variant="outline" class="gap-1">
+              <Smile :size="12" aria-hidden="true" />
+              <span class="sr-only">Настроение: </span>
+              {{ translatedLabel('mood', mood) }}
+            </Badge>
             <span v-if="!(suggestion.genres || []).length && !(suggestion.moods || []).length" class="text-muted-foreground">Модель не смогла определить категории</span>
           </div>
           <div v-if="decide.error.value" role="alert" class="mb-2 text-destructive">{{ decide.error.value }}</div>

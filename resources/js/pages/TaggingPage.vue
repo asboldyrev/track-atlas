@@ -1,28 +1,156 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
-import { ChevronLeft, ChevronRight, LoaderCircle, RotateCcw, Sparkles, AlertTriangle } from '@lucide/vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { ChevronLeft, ChevronRight, CornerDownLeft, Keyboard, RotateCcw, Sparkles, AlertTriangle, X } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import BatchBar from '@/components/BatchBar.vue'
+import ListToolbar from '@/components/ListToolbar.vue'
 import TrackList from '@/components/TrackList.vue'
 import { useCatalog, openRouterModel } from '@/composables/useCatalog'
 import { useAsyncAction } from '@/composables/useAsyncAction'
+import { useDensity } from '@/composables/useDensity'
+import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
+import { useTrackPager } from '@/composables/useTrackPager'
 
-const { fetchCatalog, mutate } = useCatalog()
+const { allTags, tagLabel, fetchCatalog, mutate } = useCatalog()
+const { compact, toggleCompact } = useDensity()
 
 const untaggedLabels = { genre: 'без жанров', mood: 'без настроений', all: 'без любых категорий' }
 
-const queue = reactive({ untagged: 'all', page: 1 })
-const rows = ref([])
-const pagination = reactive({ total: 0, current_page: 1, last_page: 1 })
-const loading = ref(false)
-const error = ref('')
+const queue = reactive({ untagged: 'all' })
+
+function makeQuery() {
+  const params = new URLSearchParams()
+  if (queue.untagged) params.set('untagged', queue.untagged)
+  return params.toString()
+}
+
+const pager = useTrackPager(makeQuery, { page: 1, perPage: 30, sort: 'artist', dir: 'asc' })
+const { rows, loading, error, total, lastPage, page, perPage, sort, dir, truncated, load, goToPage } = pager
+
 const selected = ref([])
-let requestNumber = 0
 
 const batchTagId = ref('')
 const batchMode = ref('add')
 const batch = useAsyncAction()
+
+// A10: 1–9 выбирают категорию из первых девяти — они же показаны в BatchBar
+// как кликабельные чипы, чтобы соответствие цифра → категория было видно.
+const quickTags = computed(() => allTags.value.slice(0, 9))
+
+// --- Keyboard navigation over the queue ---
+const activeIndex = ref(-1)
+const helpOpen = ref(false)
+const shortcutHint = ref('')
+const helpCloseButton = ref(null)
+let hintTimer
+
+const activeId = computed(() => rows.value[activeIndex.value]?.id ?? null)
+
+function say(message) {
+  shortcutHint.value = message
+  clearTimeout(hintTimer)
+  hintTimer = setTimeout(() => { shortcutHint.value = '' }, 4000)
+}
+
+function onRowActivate(id) {
+  const index = rows.value.findIndex(row => row.id === id)
+  if (index >= 0) activeIndex.value = index
+}
+
+function focusRow(index) {
+  const row = rows.value[index]
+  if (!row) return false
+  activeIndex.value = index
+  const element = document.getElementById('track-row-' + row.id)
+  if (!element) return false
+  element.focus()
+  element.scrollIntoView({ block: 'nearest' })
+  return true
+}
+
+function moveActive(delta) {
+  if (helpOpen.value || aiPreflight.value || aiBusy.value) return false
+  if (!rows.value.length) return false
+  const base = activeIndex.value < 0 ? -1 : activeIndex.value
+  const next = Math.min(rows.value.length - 1, Math.max(0, base + delta))
+  if (next === activeIndex.value) return false
+  return focusRow(next)
+}
+
+function toggleActiveSelection() {
+  if (helpOpen.value || aiPreflight.value || aiBusy.value) return false
+  const row = rows.value[activeIndex.value]
+  if (!row) {
+    say('Сначала выберите строку: j / k')
+    return true
+  }
+  toggleSelected(row.id, !selected.value.includes(row.id))
+  return true
+}
+
+function chooseQuickTag(position) {
+  if (helpOpen.value || aiPreflight.value || aiBusy.value) return false
+  const tag = quickTags.value[position - 1]
+  if (!tag) {
+    say('Категории ' + position + ' нет в списке 1–9')
+    return true
+  }
+  batchTagId.value = String(tag.id)
+  say('Категория для действия: ' + tagLabel(tag))
+  return true
+}
+
+function isControlTarget(target) {
+  const tag = target?.tagName?.toUpperCase()
+  return tag === 'BUTTON' || tag === 'A' || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+}
+
+function applyShortcut() {
+  if (helpOpen.value || aiPreflight.value || aiBusy.value) return false
+  const ids = selected.value.length ? selected.value : (activeId.value ? [activeId.value] : [])
+  if (!ids.length) {
+    say('Отметьте строки пробелом или выберите j / k')
+    return true
+  }
+  if (!batchTagId.value) {
+    say('Сначала выберите категорию: 1–9')
+    return true
+  }
+  void applyTo(ids)
+  return true
+}
+
+function openHelp() {
+  helpOpen.value = true
+  nextTick(() => helpCloseButton.value?.focus())
+}
+
+function toggleHelp() {
+  if (helpOpen.value) helpOpen.value = false
+  else openHelp()
+}
+
+useKeyboardShortcuts({
+  j: () => moveActive(1),
+  k: () => moveActive(-1),
+  ' ': event => (isControlTarget(event.target) ? false : toggleActiveSelection()),
+  Enter: event => (isControlTarget(event.target) ? false : applyShortcut()),
+  '?': () => { openHelp(); return true },
+  Escape: () => {
+    if (helpOpen.value) { helpOpen.value = false; return true }
+    return false
+  },
+  '1': () => chooseQuickTag(1),
+  '2': () => chooseQuickTag(2),
+  '3': () => chooseQuickTag(3),
+  '4': () => chooseQuickTag(4),
+  '5': () => chooseQuickTag(5),
+  '6': () => chooseQuickTag(6),
+  '7': () => chooseQuickTag(7),
+  '8': () => chooseQuickTag(8),
+  '9': () => chooseQuickTag(9),
+})
 
 // --- AI classification (local state, no global banner) ---
 const model = openRouterModel()
@@ -51,45 +179,43 @@ function plural(n, one, few, many) {
 const trackWord = computed(() => plural(selectedIds.value.length, 'трек', 'трека', 'треков'))
 const requestWord = computed(() => plural(requestCount.value, 'запрос', 'запроса', 'запросов'))
 
-function makeQuery() {
-  const params = new URLSearchParams()
-  if (queue.untagged) params.set('untagged', queue.untagged)
-  if (queue.page > 1) params.set('page', String(queue.page))
-  return params.toString()
-}
-
 async function loadQueue() {
-  const current = ++requestNumber
-  loading.value = true
-  error.value = ''
-  try {
-    const data = await fetchCatalog(makeQuery())
-    if (current !== requestNumber) return
-    rows.value = data.tracks.data
-    Object.assign(pagination, {
-      total: data.tracks.total,
-      current_page: data.tracks.current_page,
-      last_page: data.tracks.last_page,
-    })
-    selected.value = []
-  } catch (e) {
-    if (current === requestNumber) error.value = e.message
-  } finally {
-    if (current === requestNumber) loading.value = false
-  }
+  activeIndex.value = -1
+  await load()
+  selected.value = []
 }
 
 function changeQueueMode(value) {
   queue.untagged = value
-  queue.page = 1
+  page.value = 1
   void loadQueue()
 }
 
 function changePage(next) {
-  if (next < 1 || next > pagination.last_page || loading.value) return
-  queue.page = next
+  if (!goToPage(next)) return
   void loadQueue()
   window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+function setPerPage(value) {
+  if (value === perPage.value) return
+  perPage.value = value
+  page.value = 1
+  void loadQueue()
+}
+
+function setSort(value) {
+  if (value === sort.value) return
+  sort.value = value
+  page.value = 1
+  void loadQueue()
+}
+
+function setDir(value) {
+  if (value === dir.value) return
+  dir.value = value
+  page.value = 1
+  void loadQueue()
 }
 
 function toggleSelected(id, checked) {
@@ -104,17 +230,21 @@ function clearSelection() {
   selected.value = []
 }
 
-async function applyBatch() {
-  if (!selected.value.length || !batchTagId.value) return
+async function applyTo(ids) {
+  if (!ids.length || !batchTagId.value) return
   const result = await batch.run(
     () => mutate('/tracks/batch-tags', 'POST', {
-      tracks: selected.value,
+      tracks: ids,
       tags: [Number(batchTagId.value)],
       mode: batchMode.value,
     }),
-    'Изменено треков: ' + selected.value.length,
+    'Изменено треков: ' + ids.length,
   )
   if (result.ok) await loadQueue()
+}
+
+function applyBatch() {
+  return applyTo(selected.value)
 }
 
 function openClassifyPrompt(retryEmpty = false) {
@@ -211,7 +341,7 @@ onMounted(loadQueue)
           <h2 class="text-lg font-semibold">Очередь разметки</h2>
           <p class="text-xs text-muted-foreground">Треки, которым не хватает категорий. Отметьте нужные и примените теги массово.</p>
         </div>
-        <div class="flex items-end gap-2">
+        <div class="flex flex-wrap items-end gap-2">
           <label class="text-sm font-medium">
             Показать
             <select
@@ -226,11 +356,14 @@ onMounted(loadQueue)
             </select>
           </label>
           <Button variant="outline" size="sm" :disabled="loading" @click="loadQueue"><RotateCcw :size="14" /> Обновить</Button>
+          <Button variant="outline" size="sm" :aria-expanded="helpOpen" aria-controls="tagging-shortcuts" @click="toggleHelp">
+            <Keyboard :size="15" aria-hidden="true" /> Горячие клавиши
+          </Button>
         </div>
       </div>
 
       <div class="mb-4 rounded-lg border border-border bg-secondary p-3 text-sm" role="status">
-        <span class="font-semibold">{{ pagination.total }}</span>
+        <span class="font-semibold">{{ total }}</span>
         <span class="text-muted-foreground"> треков {{ untaggedLabels[queue.untagged] }}</span>
       </div>
 
@@ -239,12 +372,30 @@ onMounted(loadQueue)
         <Button variant="ghost" size="sm" class="ml-2" @click="loadQueue">Повторить</Button>
       </div>
 
+      <ListToolbar
+        class="mb-4"
+        :per-page="perPage"
+        :sort="sort"
+        :dir="dir"
+        :compact="compact"
+        :disabled="loading"
+        @update:per-page="setPerPage"
+        @update:sort="setSort"
+        @update:dir="setDir"
+        @toggle-compact="toggleCompact"
+      />
+
+      <p v-if="truncated" role="status" class="mb-3 rounded-lg border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+        Показаны первые 900 треков по этому фильтру — сузьте фильтр, чтобы отсортировать всю очередь.
+      </p>
+
       <BatchBar
         :selected-count="selected.length"
         :tag-id="batchTagId"
         :mode="batchMode"
         :busy="batch.busy.value"
         :classify-busy="aiBusy"
+        :quick-tags="quickTags"
         @update:tag-id="batchTagId = $event"
         @update:mode="batchMode = $event"
         @apply="applyBatch"
@@ -253,6 +404,8 @@ onMounted(loadQueue)
       />
       <p v-if="batch.error.value" role="alert" class="mb-4 text-sm text-destructive">{{ batch.error.value }}</p>
       <p v-else-if="batch.notice.value" role="status" class="mb-4 text-sm text-emerald-700">{{ batch.notice.value }}</p>
+
+      <p v-if="shortcutHint" role="status" class="mb-3 text-xs text-muted-foreground">{{ shortcutHint }}</p>
 
       <div v-if="aiPreflight" class="mb-4 rounded-lg border border-border bg-muted p-4 text-sm" role="dialog" aria-label="Подтверждение AI-классификации">
         <div class="mb-2 flex items-center gap-2 font-semibold"><AlertTriangle :size="16" /> Платный запуск OpenRouter</div>
@@ -291,15 +444,18 @@ onMounted(loadQueue)
       <TrackList
         :rows="rows"
         :loading="loading"
+        :compact="compact"
+        :active-id="activeId"
         selectable
         :selected="selected"
         @toggle-select="toggleSelected"
         @toggle-all="toggleAll"
+        @activate="onRowActivate"
         @changed="loadQueue"
       >
         <template #empty>
           <p class="text-sm text-muted-foreground">
-            <template v-if="pagination.total === 0">
+            <template v-if="total === 0">
               Очередь пуста: у всех треков есть категории по этому фильтру. Смените режим или вернитесь к референсам.
             </template>
             <template v-else>На этой странице ничего нет.</template>
@@ -307,13 +463,60 @@ onMounted(loadQueue)
         </template>
       </TrackList>
 
-      <div v-if="pagination.last_page > 1" class="mt-6 flex items-center justify-between">
-        <span class="text-xs text-muted-foreground">Страница {{ pagination.current_page }} из {{ pagination.last_page }}</span>
+      <div v-if="lastPage > 1" class="mt-6 flex flex-wrap items-center justify-between gap-3">
+        <span class="text-xs text-muted-foreground">Страница {{ page }} из {{ lastPage }}</span>
         <div class="flex gap-2">
-          <Button variant="outline" size="sm" :disabled="loading || pagination.current_page <= 1" @click="changePage(pagination.current_page - 1)"><ChevronLeft :size="16" /> Назад</Button>
-          <Button variant="outline" size="sm" :disabled="loading || pagination.current_page >= pagination.last_page" @click="changePage(pagination.current_page + 1)">Далее <ChevronRight :size="16" /></Button>
+          <Button variant="outline" size="sm" :disabled="loading || page <= 1" @click="changePage(page - 1)"><ChevronLeft :size="16" /> Назад</Button>
+          <Button variant="outline" size="sm" :disabled="loading || page >= lastPage" @click="changePage(page + 1)">Далее <ChevronRight :size="16" /></Button>
         </div>
       </div>
     </Card>
+
+    <div v-if="helpOpen" class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center" @click.self="helpOpen = false">
+      <div
+        id="tagging-shortcuts"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tagging-shortcuts-title"
+        class="w-full max-w-lg rounded-xl border border-border bg-card p-5 shadow-lg"
+      >
+        <div class="mb-3 flex items-start justify-between gap-3">
+          <h2 id="tagging-shortcuts-title" class="flex items-center gap-2 text-lg font-semibold">
+            <Keyboard :size="18" aria-hidden="true" /> Горячие клавиши разметки
+          </h2>
+          <Button ref="helpCloseButton" variant="ghost" size="sm" aria-label="Закрыть справку по клавишам" @click="helpOpen = false">
+            <X :size="16" aria-hidden="true" />
+          </Button>
+        </div>
+        <p class="mb-4 text-sm text-muted-foreground">
+          Сокращения работают на этой странице, когда фокус не в поле ввода. Стрелки и Tab тоже работают как обычно.
+        </p>
+        <dl class="grid gap-2 text-sm">
+          <div class="flex items-center justify-between gap-4 border-b border-border pb-2">
+            <dt>Следующая / предыдущая строка</dt>
+            <dd class="flex gap-1"><kbd class="rounded border border-border bg-muted px-2 py-0.5 font-mono text-xs">j</kbd><kbd class="rounded border border-border bg-muted px-2 py-0.5 font-mono text-xs">k</kbd></dd>
+          </div>
+          <div class="flex items-center justify-between gap-4 border-b border-border pb-2">
+            <dt>Выбрать активную строку</dt>
+            <dd><kbd class="rounded border border-border bg-muted px-2 py-0.5 font-mono text-xs">Пробел</kbd></dd>
+          </div>
+          <div class="flex items-center justify-between gap-4 border-b border-border pb-2">
+            <dt>Категория для действия</dt>
+            <dd class="flex gap-1"><kbd class="rounded border border-border bg-muted px-2 py-0.5 font-mono text-xs">1</kbd><span class="text-muted-foreground">–</span><kbd class="rounded border border-border bg-muted px-2 py-0.5 font-mono text-xs">9</kbd></dd>
+          </div>
+          <div class="flex items-center justify-between gap-4 border-b border-border pb-2">
+            <dt>Применить к выбранным (или к активной строке)</dt>
+            <dd><kbd class="inline-flex items-center gap-1 rounded border border-border bg-muted px-2 py-0.5 font-mono text-xs"><CornerDownLeft :size="12" aria-hidden="true" /> Enter</kbd></dd>
+          </div>
+          <div class="flex items-center justify-between gap-4">
+            <dt>Открыть или закрыть эту справку</dt>
+            <dd class="flex gap-1"><kbd class="rounded border border-border bg-muted px-2 py-0.5 font-mono text-xs">?</kbd><kbd class="rounded border border-border bg-muted px-2 py-0.5 font-mono text-xs">Esc</kbd></dd>
+          </div>
+        </dl>
+        <div class="mt-4 flex justify-end">
+          <Button size="sm" @click="helpOpen = false">Понятно</Button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

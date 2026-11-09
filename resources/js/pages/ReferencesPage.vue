@@ -4,23 +4,46 @@ import { ChevronDown, ChevronLeft, ChevronRight, Link2, Copy, RotateCcw, Sliders
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import FilterPanel from '@/components/FilterPanel.vue'
+import ListToolbar from '@/components/ListToolbar.vue'
 import TrackList from '@/components/TrackList.vue'
 import { useCatalog } from '@/composables/useCatalog'
+import { useDensity } from '@/composables/useDensity'
+import { PAGE_SIZES, useTrackPager } from '@/composables/useTrackPager'
 
-const { genreTags, moodTags, allTags, tagLabel, fetchCatalog } = useCatalog()
+const { genreTags, moodTags, allTags, tagLabel } = useCatalog()
+const { compact, toggleCompact } = useDensity()
 
 const untaggedLabels = { genre: 'Без жанров', mood: 'Без настроений', all: 'Без любых категорий' }
 
-const filters = reactive({ search: '', genres: [], moods: [], untagged: '', page: 1 })
-const rows = ref([])
-const pagination = reactive({ total: 0, current_page: 1, last_page: 1 })
-const loading = ref(false)
-const error = ref('')
+// Фильтры и параметры списка живут в URL: ссылкой можно поделиться, «назад»
+// возвращает и фильтры, и сортировку, и размер страницы.
+const filters = reactive({ search: '', genres: [], moods: [], untagged: '' })
+
+function readUrl() {
+  const params = new URLSearchParams(window.location.search)
+  filters.search = params.get('search') || ''
+  filters.genres = params.getAll('genres[]').map(Number).filter(Number.isInteger)
+  filters.moods = params.getAll('moods[]').map(Number).filter(Number.isInteger)
+  filters.untagged = ['genre', 'mood', 'all'].includes(params.get('untagged')) ? params.get('untagged') : ''
+
+  const size = Number.parseInt(params.get('per_page') || '', 10)
+  const sort = params.get('sort')
+  return {
+    page: Math.max(1, Number.parseInt(params.get('page') || '1', 10) || 1),
+    perPage: PAGE_SIZES.includes(size) ? size : 30,
+    sort: ['artist', 'title', 'album'].includes(sort) ? sort : 'artist',
+    dir: params.get('dir') === 'desc' ? 'desc' : 'asc',
+  }
+}
+
+const initial = readUrl()
+
+const pager = useTrackPager(makeQuery, initial)
+const { rows, loading, error, total, lastPage, page, perPage, sort, dir, truncated, pagination, load, goToPage } = pager
+
 const linkCopied = ref(false)
 // Mobile: filters start collapsed so the references list is the first thing on screen.
 const filtersOpen = ref(false)
-let requestNumber = 0
-let searchTimer
 let copyTimer
 
 const hasActiveFilters = computed(() =>
@@ -40,46 +63,46 @@ const activeChips = computed(() => {
   return chips
 })
 
-function readUrl() {
-  const params = new URLSearchParams(window.location.search)
-  filters.search = params.get('search') || ''
-  filters.genres = params.getAll('genres[]').map(Number).filter(Number.isInteger)
-  filters.moods = params.getAll('moods[]').map(Number).filter(Number.isInteger)
-  filters.untagged = ['genre', 'mood', 'all'].includes(params.get('untagged')) ? params.get('untagged') : ''
-  filters.page = Math.max(1, Number.parseInt(params.get('page') || '1', 10) || 1)
-}
-
 function makeQuery() {
   const params = new URLSearchParams()
   if (filters.search.trim()) params.set('search', filters.search.trim())
   for (const id of filters.genres) params.append('genres[]', String(id))
   for (const id of filters.moods) params.append('moods[]', String(id))
   if (filters.untagged) params.set('untagged', filters.untagged)
-  if (filters.page > 1) params.set('page', String(filters.page))
+  return params.toString()
+}
+
+function makeUrlQuery() {
+  const params = new URLSearchParams(makeQuery())
+  if (page.value > 1) params.set('page', String(page.value))
+  if (perPage.value !== 30) params.set('per_page', String(perPage.value))
+  if (sort.value !== 'artist') params.set('sort', sort.value)
+  if (dir.value !== 'asc') params.set('dir', dir.value)
   return params.toString()
 }
 
 function commitFilters(replace = false) {
-  const query = makeQuery()
+  const query = makeUrlQuery()
   window.history[replace ? 'replaceState' : 'pushState']({}, '', '/' + (query ? '?' + query : ''))
-  void loadCatalog()
+  void load()
 }
 
 function toggleFilter(group, id, checked) {
   filters[group] = checked ? [...new Set([...filters[group], id])] : filters[group].filter(v => v !== id)
-  filters.page = 1
+  page.value = 1
   commitFilters()
 }
 
 function changeUntagged(value) {
   filters.untagged = value
-  filters.page = 1
+  page.value = 1
   commitFilters()
 }
 
+let searchTimer
 function searchChanged(value) {
   filters.search = value
-  filters.page = 1
+  page.value = 1
   clearTimeout(searchTimer)
   searchTimer = setTimeout(() => commitFilters(true), 350)
 }
@@ -88,21 +111,42 @@ function removeChip(chip) {
   if (chip.kind === 'search') filters.search = ''
   else if (chip.kind === 'untagged') filters.untagged = ''
   else filters[chip.kind] = filters[chip.kind].filter(id => id !== chip.id)
-  filters.page = 1
+  page.value = 1
   commitFilters()
 }
 
 function clearFilters() {
   clearTimeout(searchTimer)
-  Object.assign(filters, { search: '', genres: [], moods: [], untagged: '', page: 1 })
+  Object.assign(filters, { search: '', genres: [], moods: [], untagged: '' })
+  page.value = 1
   commitFilters()
 }
 
 function changePage(next) {
-  if (next < 1 || next > pagination.last_page || loading.value) return
-  filters.page = next
+  if (!goToPage(next)) return
   commitFilters()
   window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+function setPerPage(value) {
+  if (value === perPage.value) return
+  perPage.value = value
+  page.value = 1
+  commitFilters()
+}
+
+function setSort(value) {
+  if (value === sort.value) return
+  sort.value = value
+  page.value = 1
+  commitFilters()
+}
+
+function setDir(value) {
+  if (value === dir.value) return
+  dir.value = value
+  page.value = 1
+  commitFilters()
 }
 
 async function copyLink() {
@@ -118,35 +162,18 @@ async function copyLink() {
   copyTimer = setTimeout(() => { linkCopied.value = false }, 2000)
 }
 
-async function loadCatalog() {
-  const current = ++requestNumber
-  loading.value = true
-  error.value = ''
-  try {
-    const data = await fetchCatalog(makeQuery())
-    if (current !== requestNumber) return
-    rows.value = data.tracks.data
-    Object.assign(pagination, {
-      total: data.tracks.total,
-      current_page: data.tracks.current_page,
-      last_page: data.tracks.last_page,
-    })
-  } catch (e) {
-    if (current === requestNumber) error.value = e.message
-  } finally {
-    if (current === requestNumber) loading.value = false
-  }
-}
-
 function backNavigation() {
   clearTimeout(searchTimer)
-  readUrl()
-  void loadCatalog()
+  const params = readUrl()
+  page.value = params.page
+  perPage.value = params.perPage
+  sort.value = params.sort
+  dir.value = params.dir
+  void load()
 }
 
 onMounted(() => {
-  readUrl()
-  void loadCatalog()
+  void load()
   window.addEventListener('popstate', backNavigation)
 })
 
@@ -194,7 +221,7 @@ onUnmounted(() => {
     <Card class="min-w-0 p-5">
       <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 class="text-lg font-semibold">Референсы <span class="text-muted-foreground">({{ pagination.total }})</span></h2>
+          <h2 class="text-lg font-semibold">Референсы <span class="text-muted-foreground">({{ total }})</span></h2>
           <p class="text-xs text-muted-foreground">Подбор треков по жанрам и настроениям. ИЛИ внутри группы · И между жанрами и настроениями.</p>
         </div>
         <Button variant="outline" size="sm" @click="copyLink">
@@ -221,10 +248,27 @@ onUnmounted(() => {
 
       <div v-if="error" role="alert" class="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
         {{ error }}
-        <Button variant="ghost" size="sm" class="ml-2" @click="loadCatalog">Повторить</Button>
+        <Button variant="ghost" size="sm" class="ml-2" @click="load">Повторить</Button>
       </div>
 
-      <TrackList :rows="rows" :loading="loading" @changed="loadCatalog">
+      <ListToolbar
+        class="mb-4"
+        :per-page="perPage"
+        :sort="sort"
+        :dir="dir"
+        :compact="compact"
+        :disabled="loading"
+        @update:per-page="setPerPage"
+        @update:sort="setSort"
+        @update:dir="setDir"
+        @toggle-compact="toggleCompact"
+      />
+
+      <p v-if="truncated" role="status" class="mb-3 rounded-lg border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+        Показаны первые 900 треков по этим фильтрам — уточните фильтры, чтобы отсортировать весь список.
+      </p>
+
+      <TrackList :rows="rows" :loading="loading" :compact="compact" @changed="load">
         <template #empty>
           <template v-if="hasActiveFilters">
             <p class="text-sm text-muted-foreground">Ничего не найдено по этим фильтрам.</p>
@@ -236,11 +280,11 @@ onUnmounted(() => {
         </template>
       </TrackList>
 
-      <div v-if="pagination.last_page > 1" class="mt-6 flex items-center justify-between">
-        <span class="text-xs text-muted-foreground">Страница {{ pagination.current_page }} из {{ pagination.last_page }}</span>
+      <div v-if="lastPage > 1" class="mt-6 flex flex-wrap items-center justify-between gap-3">
+        <span class="text-xs text-muted-foreground">Страница {{ page }} из {{ lastPage }}</span>
         <div class="flex gap-2">
-          <Button variant="outline" size="sm" :disabled="loading || pagination.current_page <= 1" @click="changePage(pagination.current_page - 1)"><ChevronLeft :size="16" /> Назад</Button>
-          <Button variant="outline" size="sm" :disabled="loading || pagination.current_page >= pagination.last_page" @click="changePage(pagination.current_page + 1)">Далее <ChevronRight :size="16" /></Button>
+          <Button variant="outline" size="sm" :disabled="loading || page <= 1" @click="changePage(page - 1)"><ChevronLeft :size="16" /> Назад</Button>
+          <Button variant="outline" size="sm" :disabled="loading || page >= lastPage" @click="changePage(page + 1)">Далее <ChevronRight :size="16" /></Button>
         </div>
       </div>
     </Card>
