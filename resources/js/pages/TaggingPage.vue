@@ -12,7 +12,7 @@ import { useTags } from '@/composables/useTags'
 import { useAsyncAction } from '@/composables/useAsyncAction'
 import { useDensity } from '@/composables/useDensity'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
-import { useTracks, batchTags, TRUNCATED_LIMIT } from '@/composables/useTracks'
+import { useTracks, batchTags } from '@/composables/useTracks'
 import { useSuggestions } from '@/composables/useSuggestions'
 
 const { allTags, tagLabel, loadTags } = useTags()
@@ -30,7 +30,7 @@ function makeQuery() {
 }
 
 const pager = useTracks(makeQuery, { page: 1, perPage: 30, sort: 'artist', dir: 'asc' })
-const { rows, loading, error, total, lastPage, page, perPage, sort, dir, truncated, load, goToPage } = pager
+const { rows, loading, error, total, lastPage, page, perPage, sort, dir, load, goToPage } = pager
 
 const selected = ref([])
 
@@ -422,10 +422,6 @@ onMounted(() => {
         @update:dir="setDir"
         @toggle-compact="toggleCompact"
       />
-
-      <p v-if="truncated" role="status" class="mb-3 rounded-lg border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
-        Показаны первые {{ TRUNCATED_LIMIT }} треков по этому фильтру — сузьте фильтр, чтобы отсортировать всю очередь.
-      </p>
 
       <BatchBar
         :selected-count="selected.length"

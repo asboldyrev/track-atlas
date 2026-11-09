@@ -8,7 +8,7 @@ import ListToolbar from '@/components/ListToolbar.vue'
 import TrackList from '@/components/TrackList.vue'
 import { useTags } from '@/composables/useTags'
 import { useDensity } from '@/composables/useDensity'
-import { PAGE_SIZES, TRUNCATED_LIMIT, useTracks } from '@/composables/useTracks'
+import { PAGE_SIZES, useTracks } from '@/composables/useTracks'
 
 const { genreTags, moodTags, allTags, tagLabel, loadTags } = useTags()
 const { compact, toggleCompact } = useDensity()
@@ -30,7 +30,7 @@ function readUrl() {
   const sort = params.get('sort')
   return {
     page: Math.max(1, Number.parseInt(params.get('page') || '1', 10) || 1),
-    perPage: PAGE_SIZES.includes(size) ? size : 30,
+    perPage: PAGE_SIZES.value.includes(size) ? size : 30,
     sort: ['artist', 'title', 'album'].includes(sort) ? sort : 'artist',
     dir: params.get('dir') === 'desc' ? 'desc' : 'asc',
   }
@@ -39,7 +39,7 @@ function readUrl() {
 const initial = readUrl()
 
 const pager = useTracks(makeQuery, initial)
-const { rows, loading, error, total, lastPage, page, perPage, sort, dir, truncated, pagination, load, goToPage } = pager
+const { rows, loading, error, total, lastPage, page, perPage, sort, dir, pagination, load, goToPage } = pager
 
 const linkCopied = ref(false)
 // Mobile: filters start collapsed so the references list is the first thing on screen.
@@ -271,10 +271,6 @@ onUnmounted(() => {
         @update:dir="setDir"
         @toggle-compact="toggleCompact"
       />
-
-      <p v-if="truncated" role="status" class="mb-3 rounded-lg border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
-        Показаны первые {{ TRUNCATED_LIMIT }} треков по этим фильтрам — уточните фильтры, чтобы отсортировать весь список.
-      </p>
 
       <TrackList :rows="rows" :loading="loading" :compact="compact" :error="Boolean(error)" @changed="load">
         <template #empty>
