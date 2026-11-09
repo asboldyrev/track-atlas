@@ -9,6 +9,7 @@ class AiUsageLog extends Model
     protected $fillable = [
         'provider', 'model', 'track_ids', 'prompt_tokens',
         'completion_tokens', 'cost_usd', 'outcome',
+        'error_code', 'error_message',
     ];
 
     protected function casts(): array

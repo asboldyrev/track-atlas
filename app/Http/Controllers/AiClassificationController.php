@@ -2,22 +2,23 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AiUsageLog;
+use App\Exceptions\OpenRouterRequestException;
+use App\Jobs\ClassifyTracksJob;
 use App\Models\MetadataSuggestion;
 use App\Models\Tag;
 use App\Models\Track;
 use App\Services\GenreNormalizer;
-use App\Services\OpenRouterClassifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
 
 class AiClassificationController extends Controller
 {
-    public function classify(Request $request, OpenRouterClassifier $classifier): JsonResponse
+    public function classify(Request $request): JsonResponse
     {
         $data = $request->validate([
             'tracks' => ['required', 'array', 'min:1', 'max:10'],
@@ -59,7 +60,15 @@ class AiClassificationController extends Controller
         }
 
         try {
-            $result = $classifier->classify($eligible);
+            // Runs inline (Bus::dispatchNow) so the page keeps its synchronous
+            // contract; the job owns the retry/backoff/throttle policy.
+            $result = Bus::dispatchNow(new ClassifyTracksJob($eligible->pluck('id')->all()));
+        } catch (OpenRouterRequestException $e) {
+            // 429/5xx and timeouts were already retried and journalled by the job.
+            return response()->json([
+                'message' => 'OpenRouter недоступен: '.$e->errorCode.'. Повторите позже.',
+                'code' => $e->errorCode,
+            ], 502);
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         } catch (\Throwable $e) {
@@ -67,32 +76,6 @@ class AiClassificationController extends Controller
 
             return response()->json(['message' => 'Не удалось получить классификацию OpenRouter.'], 502);
         }
-
-        DB::transaction(function () use ($eligible, $result) {
-            foreach ($eligible as $track) {
-                $proposal = $result['tracks'][$track->id];
-                MetadataSuggestion::updateOrCreate(
-                    ['track_id' => $track->id, 'provider' => 'openrouter'],
-                    [
-                        'model' => $result['model'],
-                        'genres' => $proposal['genres'],
-                        'moods' => $proposal['moods'],
-                        'status' => 'pending',
-                        'error' => null,
-                    ],
-                );
-            }
-
-            AiUsageLog::create([
-                'provider' => 'openrouter',
-                'model' => $result['model'],
-                'track_ids' => $eligible->pluck('id')->all(),
-                'prompt_tokens' => $result['usage']['prompt_tokens'],
-                'completion_tokens' => $result['usage']['completion_tokens'],
-                'cost_usd' => $result['usage']['cost_usd'],
-                'outcome' => 'completed',
-            ]);
-        });
 
         return response()->json([
             'processed' => $eligible->count(),
