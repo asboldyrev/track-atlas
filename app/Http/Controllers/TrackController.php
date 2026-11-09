@@ -75,7 +75,7 @@ class TrackController extends Controller
     public function batchTags(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'tracks' => ['required', 'array', 'min:1', 'max:200'],
+            'tracks' => ['required', 'array', 'min:1', 'max:'.(int) config('api.limits.batch_tracks_max')],
             'tracks.*' => ['required', 'integer', 'distinct', 'exists:tracks,id'],
             'tags' => ['required', 'array', 'min:1'],
             'tags.*' => ['integer', 'distinct', 'exists:tags,id'],
