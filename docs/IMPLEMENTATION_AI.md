@@ -12,7 +12,7 @@
 
 - `POST /ai/classify`, JSON `{"tracks":[1,2,3]}`; максимум 10 записей. Для уже обработанных записей повторный запрос OpenRouter не делается.
 - `PUT /ai/suggestions/{id}`, JSON `{"decision":"accept"}` или `{"decision":"reject"}`. Можно обработать только pending OpenRouter-предложения; защита от повторного подтверждения.
-- `GET /catalog` дополнительно включает `metadata_suggestions` типа OpenRouter для вывода в интерфейсе.
+- `GET /api/tracks` дополнительно включает `metadata_suggestions` типа OpenRouter для вывода в интерфейсе.
 
 ### Ручной приоритет
 

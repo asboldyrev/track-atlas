@@ -5,10 +5,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import TagTranslationRow from '@/components/TagTranslationRow.vue'
-import { useCatalog } from '@/composables/useCatalog'
+import { useTags } from '@/composables/useTags'
 import { useAsyncAction } from '@/composables/useAsyncAction'
 
-const { genreTags, moodTags, fetchCatalog, mutate } = useCatalog()
+const { genreTags, moodTags, loadTags: reloadTags, createTag } = useTags()
 
 const newTagName = ref('')
 const newTagType = ref('genre')
@@ -20,7 +20,7 @@ async function loadTags() {
   loading.value = true
   loadError.value = ''
   try {
-    await fetchCatalog('')
+    await reloadTags()
   } catch (e) {
     loadError.value = e.message
   } finally {
@@ -31,7 +31,7 @@ async function loadTags() {
 async function addTag() {
   if (!newTagName.value.trim()) return
   const result = await create.run(
-    () => mutate('/tags', 'POST', { name: newTagName.value.trim(), type: newTagType.value }),
+    () => createTag(newTagName.value.trim(), newTagType.value),
     'Категория добавлена',
   )
   if (result.ok) {

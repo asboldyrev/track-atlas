@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { LoaderCircle } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useCatalog } from '@/composables/useCatalog'
+import { useTags } from '@/composables/useTags'
 import { useAsyncAction } from '@/composables/useAsyncAction'
 
 const props = defineProps({
@@ -11,13 +11,13 @@ const props = defineProps({
 })
 const emit = defineEmits(['saved'])
 
-const { mutate } = useCatalog()
+const { saveTranslation } = useTags()
 const value = ref(props.tag.name_ru || '')
 const save = useAsyncAction()
 
 async function submit() {
   const result = await save.run(
-    () => mutate('/tags/' + props.tag.id + '/translation', 'PUT', { name_ru: value.value.trim() || null }),
+    () => saveTranslation(props.tag.id, value.value.trim() || null),
     'Перевод сохранён',
   )
   if (result.ok) emit('saved')

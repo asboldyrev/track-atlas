@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Card } from '@/components/ui/card'
-import { useCatalog } from '@/composables/useCatalog'
+import { useTags } from '@/composables/useTags'
 
 defineProps({
   filters: { type: Object, required: true },
@@ -13,7 +13,7 @@ defineProps({
 })
 const emit = defineEmits(['search', 'toggle', 'untagged', 'reset'])
 
-const { tagLabel } = useCatalog()
+const { tagLabel } = useTags()
 </script>
 
 <template>

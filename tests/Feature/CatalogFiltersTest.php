@@ -28,11 +28,11 @@ class CatalogFiltersTest extends TestCase
         $this->makeTrack('Midnight City', 'M83');
         $this->makeTrack('Odd Look', 'Kavinsky');
 
-        $this->getJson('/catalog?search=kavinsky')
+        $this->getJson('/api/tracks?search=kavinsky')
             ->assertOk()
             ->assertJsonPath('tracks.total', 2);
 
-        $this->getJson('/catalog?search=midnight')
+        $this->getJson('/api/tracks?search=midnight')
             ->assertOk()
             ->assertJsonPath('tracks.total', 1)
             ->assertJsonPath('tracks.data.0.title', 'Midnight City');
@@ -45,13 +45,13 @@ class CatalogFiltersTest extends TestCase
             $this->makeTrack(sprintf('Track %02d', $i), 'Artist')->tags()->attach($mood->id);
         }
 
-        $this->getJson('/catalog?moods[]='.$mood->id)
+        $this->getJson('/api/tracks?moods[]='.$mood->id)
             ->assertOk()
             ->assertJsonPath('tracks.total', 35)
             ->assertJsonPath('tracks.current_page', 1)
             ->assertJsonCount(30, 'tracks.data');
 
-        $this->getJson('/catalog?moods[]='.$mood->id.'&page=2')
+        $this->getJson('/api/tracks?moods[]='.$mood->id.'&page=2')
             ->assertOk()
             ->assertJsonPath('tracks.current_page', 2)
             ->assertJsonCount(5, 'tracks.data');
@@ -67,25 +67,25 @@ class CatalogFiltersTest extends TestCase
         $this->makeTrack('Only Mood', 'Artist')->tags()->attach($mood->id);
 
         // untagged=all only returns tracks without any tag.
-        $this->getJson('/catalog?untagged=all')
+        $this->getJson('/api/tracks?untagged=all')
             ->assertOk()
             ->assertJsonPath('tracks.total', 1)
             ->assertJsonPath('tracks.data.0.title', 'Untagged');
 
         // untagged=mood returns tracks lacking a mood tag (Untagged + Only Genre).
-        $this->getJson('/catalog?untagged=mood')
+        $this->getJson('/api/tracks?untagged=mood')
             ->assertOk()
             ->assertJsonPath('tracks.total', 2);
 
         // untagged=genre returns tracks lacking a genre tag (Untagged + Only Mood).
-        $this->getJson('/catalog?untagged=genre')
+        $this->getJson('/api/tracks?untagged=genre')
             ->assertOk()
             ->assertJsonPath('tracks.total', 2);
     }
 
     public function test_invalid_untagged_value_is_rejected(): void
     {
-        $this->getJson('/catalog?untagged=unknown')
+        $this->getJson('/api/tracks?untagged=unknown')
             ->assertStatus(422)
             ->assertJsonValidationErrors('untagged');
     }

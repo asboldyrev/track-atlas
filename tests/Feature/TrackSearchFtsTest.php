@@ -51,32 +51,29 @@ class TrackSearchFtsTest extends TestCase
         $this->assertSame(0, $this->ftsCount('"m83"'));
     }
 
-    public function test_catalog_search_matches_title_and_artist_through_fts(): void
+    public function test_api_tracks_search_matches_title_and_artist_through_fts(): void
     {
         $this->makeTrack('Nightcall', 'Kavinsky');
         $this->makeTrack('Midnight City', 'M83');
         $this->makeTrack('Odd Look', 'Kavinsky');
 
-        $this->getJson('/catalog?search=kavinsky')
+        $this->getJson('/api/tracks?search=kavinsky')
             ->assertOk()->assertJsonPath('tracks.total', 2);
 
         // Регистр не важен, совпадение по префиксу токена.
-        $this->getJson('/catalog?search=KAVINSKY')
+        $this->getJson('/api/tracks?search=KAVINSKY')
             ->assertOk()->assertJsonPath('tracks.total', 2);
 
-        $this->getJson('/catalog?search=midnight')
+        $this->getJson('/api/tracks?search=midnight')
             ->assertOk()->assertJsonPath('tracks.total', 1)
             ->assertJsonPath('tracks.data.0.title', 'Midnight City');
     }
 
-    public function test_search_is_shared_by_catalog_and_api_tracks(): void
+    public function test_search_is_served_by_api_tracks(): void
     {
         $this->makeTrack('Midnight City', 'M83');
 
         $this->getJson('/api/tracks?search=midnight')
-            ->assertOk()->assertJsonPath('tracks.total', 1);
-
-        $this->getJson('/catalog?search=midnight')
             ->assertOk()->assertJsonPath('tracks.total', 1);
     }
 
@@ -84,7 +81,7 @@ class TrackSearchFtsTest extends TestCase
     {
         $this->makeTrack('Nightcall', 'Kavinsky');
 
-        $this->getJson('/catalog?search=ka')
+        $this->getJson('/api/tracks?search=ka')
             ->assertOk()->assertJsonPath('tracks.total', 1)
             ->assertJsonPath('tracks.data.0.artist', 'Kavinsky');
     }
@@ -93,7 +90,7 @@ class TrackSearchFtsTest extends TestCase
     {
         $this->makeTrack('Nightcall', 'Kavinsky');
 
-        $this->getJson('/catalog?search=!!!')
+        $this->getJson('/api/tracks?search=!!!')
             ->assertOk()->assertJsonPath('tracks.total', 0);
     }
 
@@ -102,7 +99,7 @@ class TrackSearchFtsTest extends TestCase
         $this->makeTrack('Nightcall', 'Kavinsky');
         $this->makeTrack('Kavinsky Hidden', 'Kavinsky', missing: true);
 
-        $this->getJson('/catalog?search=kavinsky')
+        $this->getJson('/api/tracks?search=kavinsky')
             ->assertOk()->assertJsonPath('tracks.total', 1);
     }
 }

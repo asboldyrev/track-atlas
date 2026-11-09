@@ -4,7 +4,9 @@ import { CheckCheck, LoaderCircle, Smile, Tag, Tags } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
-import { useCatalog } from '@/composables/useCatalog'
+import { useTags } from '@/composables/useTags'
+import { saveTrackTags } from '@/composables/useTracks'
+import { useSuggestions } from '@/composables/useSuggestions'
 import { useAsyncAction } from '@/composables/useAsyncAction'
 
 const props = defineProps({
@@ -16,7 +18,8 @@ const props = defineProps({
 })
 const emit = defineEmits(['toggle-select', 'changed', 'activate'])
 
-const { genreTags, moodTags, tagLabel, translatedLabel, mutate } = useCatalog()
+const { genreTags, moodTags, tagLabel, translatedLabel } = useTags()
+const { decide: decideSuggestionRequest } = useSuggestions()
 
 const editing = ref(false)
 const editingTags = ref([])
@@ -40,7 +43,7 @@ function toggleEditTag(id, checked) {
 
 async function saveTrack() {
   const result = await save.run(
-    () => mutate('/tracks/' + props.track.id + '/tags', 'PUT', { tags: editingTags.value }),
+    () => saveTrackTags(props.track.id, editingTags.value),
     'Категории сохранены',
   )
   if (result.ok) {
@@ -52,7 +55,7 @@ async function saveTrack() {
 async function decideSuggestion(suggestion, decision) {
   decidingId.value = suggestion.id
   const result = await decide.run(
-    () => mutate('/ai/suggestions/' + suggestion.id, 'PUT', { decision }),
+    () => decideSuggestionRequest(suggestion.id, decision),
     decision === 'accept' ? 'Предложенные теги применены' : 'Предложение отклонено',
   )
   decidingId.value = null

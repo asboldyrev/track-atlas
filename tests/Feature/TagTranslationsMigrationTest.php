@@ -4,9 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Tag;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
-use ReflectionMethod;
 use Tests\TestCase;
 
 class TagTranslationsMigrationTest extends TestCase
@@ -75,17 +73,5 @@ class TagTranslationsMigrationTest extends TestCase
 
         $this->assertNull($translated->fresh()->name_ru);
         $this->assertSame('Мрачный вручную', $manual->fresh()->name_ru);
-    }
-
-    public function test_migration_dictionary_stays_in_sync_with_config_file(): void
-    {
-        if (! File::exists(config_path('tag_translations.php'))) {
-            $this->markTestSkipped('config/tag_translations.php удалён: словарь живёт только в миграции.');
-        }
-
-        $migration = $this->migrationInstance();
-        $method = new ReflectionMethod($migration, 'translations');
-
-        $this->assertSame(config('tag_translations'), $method->invoke($migration));
     }
 }

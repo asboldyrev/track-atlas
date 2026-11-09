@@ -1,7 +1,7 @@
 <script setup>
 import { ArrowDownAZ, ArrowUpAZ, AlignJustify, Rows3 } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
-import { PAGE_SIZES, SORT_OPTIONS } from '@/composables/useTrackPager'
+import { PAGE_SIZES, SORT_OPTIONS } from '@/composables/useTracks'
 
 // A8: единая панель сортировки, размера страницы и плотности для списков.
 // Все контролы подписаны видимым текстом — состояние не передаётся только цветом.

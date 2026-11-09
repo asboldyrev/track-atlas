@@ -12,13 +12,15 @@
 
 ## Архитектура
 
-Laravel обслуживает страницу `GET /` с Vue mount-point и JSON-каталог `GET /catalog`. Для мутаций используются защищённые CSRF POST/PUT endpoints.
+Laravel обслуживает страницу `GET /` с Vue mount-point, а данные читаются из `GET /api/tracks` и `GET /api/tags`. Для мутаций используются защищённые CSRF POST/PUT endpoints.
+
+Данные забирают composables в `resources/js/composables/`: `useTracks` (список и постраничность через `/api/tracks`), `useTags` (справочник и русские названия через `/api/tags`), `useSuggestions` (AI-классификация и решения по предложениям через `/ai/*`). Компоненты страниц не делают `fetch` сами — они читают состояние composable.
 
 Пример ссылки:
 ```
 /?genres%5B%5D=1&genres%5B%5D=2&moods%5B%5D=5&search=night&page=2
 ```
-Приложение читает query при открытии и `popstate`, обновляет адрес с History API. Обычный HTTP запрос к `/catalog` получает те же параметры, что в пользовательском URL.
+Приложение читает query при открытии и `popstate`, обновляет адрес с History API. Обычный HTTP запрос к `/api/tracks` получает те же параметры, что в пользовательском URL.
 
 Сервер фильтрует по правилу OR внутри группы жанров, OR внутри группы настроений и AND между группами.
 

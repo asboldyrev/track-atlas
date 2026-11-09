@@ -3,26 +3,19 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\TagsIndexRequest;
 use App\Models\Tag;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 
 class TagApiController extends Controller
 {
     /**
      * Справочник тегов: пагинация плюс число треков на тег.
-     * Русское название отдаётся колонкой name_ru (перенесено из config/tag_translations.php).
+     * Русское название отдаётся колонкой name_ru (ранее — отдельный файл-словарь).
      */
-    public function index(Request $request): JsonResponse
+    public function index(TagsIndexRequest $request): JsonResponse
     {
-        $limit = (int) config('api.limits.search_max_length');
-
-        $data = $request->validate([
-            'type' => ['sometimes', 'nullable', Rule::in(['genre', 'mood'])],
-            'search' => ['sometimes', 'nullable', 'string', 'max:'.$limit],
-            'page' => ['sometimes', 'integer', 'min:1'],
-        ]);
+        $data = $request->validated();
 
         $query = Tag::query()
             // Считаем только видимые треки: отсутствующие файлы каталог не показывает.

@@ -6,13 +6,16 @@ import { Card } from '@/components/ui/card'
 import BatchBar from '@/components/BatchBar.vue'
 import ListToolbar from '@/components/ListToolbar.vue'
 import TrackList from '@/components/TrackList.vue'
-import { useCatalog, openRouterModel } from '@/composables/useCatalog'
+import { openRouterModel } from '@/composables/useApi'
+import { useTags } from '@/composables/useTags'
 import { useAsyncAction } from '@/composables/useAsyncAction'
 import { useDensity } from '@/composables/useDensity'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
-import { useTrackPager } from '@/composables/useTrackPager'
+import { useTracks, batchTags } from '@/composables/useTracks'
+import { useSuggestions } from '@/composables/useSuggestions'
 
-const { allTags, tagLabel, fetchCatalog, mutate } = useCatalog()
+const { allTags, tagLabel, loadTags } = useTags()
+const { classify } = useSuggestions()
 const { compact, toggleCompact } = useDensity()
 
 const untaggedLabels = { genre: 'без жанров', mood: 'без настроений', all: 'без любых категорий' }
@@ -25,7 +28,7 @@ function makeQuery() {
   return params.toString()
 }
 
-const pager = useTrackPager(makeQuery, { page: 1, perPage: 30, sort: 'artist', dir: 'asc' })
+const pager = useTracks(makeQuery, { page: 1, perPage: 30, sort: 'artist', dir: 'asc' })
 const { rows, loading, error, total, lastPage, page, perPage, sort, dir, truncated, load, goToPage } = pager
 
 const selected = ref([])
@@ -233,11 +236,7 @@ function clearSelection() {
 async function applyTo(ids) {
   if (!ids.length || !batchTagId.value) return
   const result = await batch.run(
-    () => mutate('/tracks/batch-tags', 'POST', {
-      tracks: ids,
-      tags: [Number(batchTagId.value)],
-      mode: batchMode.value,
-    }),
+    () => batchTags(ids, [Number(batchTagId.value)], batchMode.value),
     'Изменено треков: ' + ids.length,
   )
   if (result.ok) await loadQueue()
@@ -281,7 +280,7 @@ async function runClassification() {
     for (const batchIds of batches) {
       if (aiCancelRequested.value) break
       try {
-        const result = await mutate('/ai/classify', 'POST', { tracks: batchIds, retry_empty: aiRetryEmpty.value === true })
+        const result = await classify(batchIds, { retryEmpty: aiRetryEmpty.value === true })
         aiProgress.value.processed += result.processed || 0
         aiProgress.value.skipped += result.skipped || 0
         if (result.usage) {
@@ -330,7 +329,10 @@ function cancelClassification() {
   aiCancelRequested.value = true
 }
 
-onMounted(loadQueue)
+onMounted(() => {
+  void loadTags()
+  void loadQueue()
+})
 </script>
 
 <template>

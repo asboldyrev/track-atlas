@@ -1,10 +1,10 @@
 import { computed, ref } from 'vue'
-import { useCatalog } from './useCatalog'
+import { getJson, mutate } from './useApi'
 
 // A8: сортировка и выбор размера страницы.
 //
-// /catalog отдаёт фиксированные 30 строк и сортирует по artist+title, поэтому
-// «размер страницы» и пользовательская сортировка собираются на клиенте:
+// GET /api/tracks отдаёт фиксированные 30 строк и сортирует по artist+title,
+// поэтому «размер страницы» и пользовательская сортировка собираются на клиенте:
 // при отклонении от серверного порядка страница вычитывает нужный диапазон
 // целиком (постранично, с предохранителем MAX_PAGES) и режет его сама.
 // Пока настройки совпадают с серверными, работает обычный серверный режим —
@@ -20,6 +20,16 @@ export const SORT_OPTIONS = [
 const SERVER_PAGE_SIZE = 30
 const MAX_PAGES = 30 // не более 30 запросов при сборке полного списка
 
+// Мутации треков живут на web-маршрутах (CSRF), но описаны здесь рядом с
+// чтением: компонентам не нужно знать URL и форму запроса.
+export function saveTrackTags(trackId, tagIds) {
+  return mutate('/tracks/' + trackId + '/tags', 'PUT', { tags: tagIds })
+}
+
+export function batchTags(trackIds, tagIds, mode) {
+  return mutate('/tracks/batch-tags', 'POST', { tracks: trackIds, tags: tagIds, mode })
+}
+
 function withPage(query, page) {
   const params = new URLSearchParams(query)
   if (page > 1) params.set('page', String(page))
@@ -32,9 +42,11 @@ function sortKey(track, key) {
   return (value === null || value === undefined ? '' : String(value)).toLocaleLowerCase('ru')
 }
 
-export function useTrackPager(buildFilterQuery, initial = {}) {
-  const { fetchCatalog } = useCatalog()
+async function fetchTracks(query) {
+  return getJson('/api/tracks' + (query ? '?' + query : ''))
+}
 
+export function useTracks(buildFilterQuery, initial = {}) {
   const perPage = ref(initial.perPage || SERVER_PAGE_SIZE)
   const sort = ref(initial.sort || 'artist')
   const dir = ref(initial.dir || 'asc')
@@ -77,7 +89,7 @@ export function useTrackPager(buildFilterQuery, initial = {}) {
       const filter = buildFilterQuery()
       if (!clientMode.value) {
         invalidate()
-        const data = await fetchCatalog(withPage(filter, page.value))
+        const data = await fetchTracks(withPage(filter, page.value))
         if (current !== requestNumber) return
         // После смены фильтра текущая страница может оказаться за пределами
         // результата — тогда возвращаемся на последнюю существующую.
@@ -94,7 +106,7 @@ export function useTrackPager(buildFilterQuery, initial = {}) {
 
       const key = filter + '|' + sort.value + '|' + dir.value
       if (buffer === null || bufferKey !== key) {
-        const first = await fetchCatalog(withPage(filter, 1))
+        const first = await fetchTracks(withPage(filter, 1))
         if (current !== requestNumber) return
         const collected = [...first.tracks.data]
         total.value = first.tracks.total
@@ -107,7 +119,7 @@ export function useTrackPager(buildFilterQuery, initial = {}) {
         const CONCURRENCY = 6
         for (let i = 0; i < pages.length; i += CONCURRENCY) {
           const chunk = pages.slice(i, i + CONCURRENCY)
-          const results = await Promise.all(chunk.map(p => fetchCatalog(withPage(filter, p))))
+          const results = await Promise.all(chunk.map(p => fetchTracks(withPage(filter, p))))
           if (current !== requestNumber) return
           for (const result of results) collected.push(...result.tracks.data)
         }

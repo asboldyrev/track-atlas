@@ -1,7 +1,7 @@
 # Implementation status
 
 ## 2026-11-03: Phase 1 foundation (working branch)
-Implemented in `feat/catalog-foundation`: SQLite migrations, Track/Tag models, recursive Artisan scanner, basic filename-based metadata fallback, server-rendered filtering UI, category creation/editing, and initial feature tests.
+Implemented in the catalog-foundation feature branch: SQLite migrations, Track/Tag models, recursive Artisan scanner, basic filename-based metadata fallback, server-rendered filtering UI, category creation/editing, and initial feature tests.
 
 **Important limitations:** This is the **first vertical slice**, not the completed planned Vue MVP. Reading rich MP3/FLAC/M4A/OGG metadata through getID3 and Vue 3 frontend will follow. The current scanner derives artist/title from `Artist - Title.ext` and does not import embedded genre metadata. Batch tag editing is not included yet. Do not mark Phase 1 complete until those are implemented.
 

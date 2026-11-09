@@ -1,7 +1,7 @@
 <script setup>
 import { CheckCheck, LoaderCircle, Sparkles, X } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
-import { useCatalog } from '@/composables/useCatalog'
+import { useTags } from '@/composables/useTags'
 
 const props = defineProps({
   selectedCount: { type: Number, default: 0 },
@@ -14,7 +14,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:tagId', 'update:mode', 'apply', 'clear', 'classify'])
 
-const { allTags, tagLabel } = useCatalog()
+const { allTags, tagLabel } = useTags()
 </script>
 
 <template>

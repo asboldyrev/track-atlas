@@ -97,22 +97,22 @@ class MusicCatalogTest extends TestCase
         $dark = Tag::create(['type' => 'mood', 'name' => 'Dark', 'slug' => 'dark']);
         $a->tags()->attach([$rock->id, $dark->id]);
         $b->tags()->attach([$jazz->id]);
-        $this->getJson('/catalog?genres[]='.$rock->id.'&genres[]='.$jazz->id.'&moods[]='.$dark->id)
+        $this->getJson('/api/tracks?genres[]='.$rock->id.'&genres[]='.$jazz->id.'&moods[]='.$dark->id)
             ->assertOk()
             ->assertJsonPath('tracks.total', 1)
             ->assertJsonPath('tracks.data.0.artist', 'One')
             ->assertJsonPath('tracks.data.0.title', 'A');
     }
 
-    public function test_catalog_shell_loads_and_url_filters_are_applied_by_the_api(): void
+    public function test_page_shell_loads_and_url_filters_are_applied_by_the_api(): void
     {
         $track = Track::create(['path' => 'a.mp3', 'title' => 'Nightcall', 'artist' => 'Kavinsky', 'size' => 1, 'file_mtime' => 1]);
         $genre = Tag::create(['type' => 'genre', 'name' => 'Synthwave', 'slug' => 'synthwave']);
         $track->tags()->attach($genre->id);
         $this->get('/?genres[]='.$genre->id)->assertOk()->assertSee('id="app"', false);
-        $this->getJson('/catalog?genres[]='.$genre->id)
+        $this->getJson('/api/tracks?genres[]='.$genre->id)
             ->assertOk()->assertJsonPath('tracks.total', 1);
-        $this->getJson('/catalog?untagged=genre')
+        $this->getJson('/api/tracks?untagged=genre')
             ->assertOk()->assertJsonPath('tracks.total', 0);
     }
 
@@ -148,17 +148,22 @@ class MusicCatalogTest extends TestCase
         $this->assertCount(0, $track->fresh()->tags);
     }
 
-    public function test_catalog_exposes_translations_without_changing_canonical_names_or_filter_ids(): void
+    public function test_api_tags_expose_name_ru_without_changing_canonical_names_or_filter_ids(): void
     {
         $track = Track::create(['path' => 'translated.mp3', 'title' => 'Translated', 'size' => 1, 'file_mtime' => 1]);
         $tag = Tag::create(['type' => 'mood', 'name' => 'Melancholic', 'slug' => 'melancholic']);
         $track->tags()->attach($tag->id);
 
-        $this->getJson('/catalog?moods[]='.$tag->id)
+        // Треки фильтруются по id тега — справочник их не подменяет.
+        $this->getJson('/api/tracks?moods[]='.$tag->id)
             ->assertOk()
-            ->assertJsonPath('tracks.total', 1)
-            ->assertJsonPath('tags.mood.0.name', 'Melancholic')
-            ->assertJsonPath('tag_translations.mood.melancholic', 'Меланхоличный');
+            ->assertJsonPath('tracks.total', 1);
+
+        // Русское название отдаёт справочник тегов колонкой name_ru.
+        $this->getJson('/api/tags?type=mood')
+            ->assertOk()
+            ->assertJsonPath('tags.data.0.name', 'Melancholic')
+            ->assertJsonPath('tags.data.0.name_ru', null);
 
         $this->putJson('/tags/'.$tag->id.'/translation', [
             'name_ru' => 'Тоскливый',
@@ -170,10 +175,9 @@ class MusicCatalogTest extends TestCase
             'slug' => 'melancholic',
             'name_ru' => 'Тоскливый',
         ]);
-        $this->getJson('/catalog?moods[]='.$tag->id)
+        $this->getJson('/api/tags?type=mood')
             ->assertOk()
-            ->assertJsonPath('tracks.total', 1)
-            ->assertJsonPath('tags.mood.0.name_ru', 'Тоскливый');
+            ->assertJsonPath('tags.data.0.name_ru', 'Тоскливый');
     }
 
     public function test_translation_can_be_cleared_and_invalid_translation_is_rejected(): void

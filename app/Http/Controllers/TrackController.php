@@ -2,87 +2,40 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\BatchTagsRequest;
+use App\Http\Requests\StoreTagRequest;
+use App\Http\Requests\TagTranslationUpdateRequest;
+use App\Http\Requests\TrackTagsUpdateRequest;
 use App\Models\Tag;
 use App\Models\Track;
 use App\Services\GenreNormalizer;
 use App\Services\TagDecisionSynchronizer;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
 
 class TrackController extends Controller
 {
+    /**
+     * Blade-обёртка с точкой монтирования Vue: один и тот же шаблон для `/`,
+     * `/categories` и `/tagging` (страницу выбирает клиент по pathname).
+     */
     public function index()
     {
         return view('tracks.index');
     }
 
-    public function catalog(Request $request): JsonResponse
+    public function update(TrackTagsUpdateRequest $request, Track $track, TagDecisionSynchronizer $decisions): JsonResponse
     {
-        $filters = $request->validate([
-            'search' => ['sometimes', 'nullable', 'string', 'max:200'],
-            'genres' => ['sometimes', 'array'],
-            'genres.*' => ['integer', 'exists:tags,id'],
-            'moods' => ['sometimes', 'array'],
-            'moods.*' => ['integer', 'exists:tags,id'],
-            'untagged' => ['sometimes', Rule::in(['genre', 'mood', 'all'])],
-            'page' => ['sometimes', 'integer', 'min:1'],
-        ]);
-
-        $query = Track::query()->where('is_missing', false)->with(['tags', 'metadataSuggestions' => fn ($query) => $query->where('provider', 'openrouter')]);
-
-        if ($search = ($filters['search'] ?? null)) {
-            $query->search($search);
-        }
-
-        foreach (['genres' => 'genre', 'moods' => 'mood'] as $key => $type) {
-            $ids = $filters[$key] ?? [];
-            if ($ids !== []) {
-                $query->whereHas('tags', fn ($q) => $q->where('type', $type)->whereIn('tags.id', $ids));
-            }
-        }
-
-        if ($untagged = ($filters['untagged'] ?? null)) {
-            if ($untagged === 'all') {
-                $query->doesntHave('tags');
-            } else {
-                $query->whereDoesntHave('tags', fn ($q) => $q->where('type', $untagged));
-            }
-        }
-
-        return response()->json([
-            'tracks' => $query->orderBy('artist')->orderBy('title')->paginate(30),
-            'tags' => Tag::orderBy('name')->get()->groupBy('type'),
-            'tag_translations' => config('tag_translations'),
-        ]);
-    }
-
-    public function update(Request $request, Track $track, TagDecisionSynchronizer $decisions): JsonResponse
-    {
-        $data = $request->validate([
-            'tags' => ['present', 'array'],
-            'tags.*' => ['integer', 'distinct', 'exists:tags,id'],
-        ]);
-
-        $tagIds = array_map('intval', $data['tags']);
+        $tagIds = array_map('intval', $request->validated()['tags']);
         DB::transaction(fn () => $decisions->replace($track, $tagIds));
 
         return response()->json(['ok' => true]);
     }
 
-    public function batchTags(Request $request, TagDecisionSynchronizer $decisions): JsonResponse
+    public function batchTags(BatchTagsRequest $request, TagDecisionSynchronizer $decisions): JsonResponse
     {
-        $data = $request->validate([
-            'tracks' => ['required', 'array', 'min:1', 'max:'.(int) config('api.limits.batch_tracks_max')],
-            'tracks.*' => ['required', 'integer', 'distinct', 'exists:tracks,id'],
-            'tags' => ['required', 'array', 'min:1'],
-            'tags.*' => ['integer', 'distinct', 'exists:tags,id'],
-            'mode' => ['required', Rule::in(['add', 'remove'])],
-        ]);
-
+        $data = $request->validated();
         $trackIds = array_map('intval', $data['tracks']);
         $tagIds = array_map('intval', $data['tags']);
 
@@ -98,22 +51,17 @@ class TrackController extends Controller
         return response()->json(['updated' => count($trackIds)]);
     }
 
-    public function updateTranslation(Request $request, Tag $tag): JsonResponse
+    public function updateTranslation(TagTranslationUpdateRequest $request, Tag $tag): JsonResponse
     {
-        $data = $request->validate([
-            'name_ru' => ['present', 'nullable', 'string', 'max:120'],
-        ]);
-        $tag->update(['name_ru' => trim($data['name_ru'] ?? '') ?: null]);
+        $nameRu = trim((string) ($request->validated()['name_ru'] ?? ''));
+        $tag->update(['name_ru' => $nameRu !== '' ? $nameRu : null]);
 
         return response()->json(['tag' => $tag->fresh()]);
     }
 
-    public function storeTag(Request $request, GenreNormalizer $normalizer): JsonResponse
+    public function storeTag(StoreTagRequest $request, GenreNormalizer $normalizer): JsonResponse
     {
-        $data = $request->validate([
-            'type' => ['required', Rule::in(['genre', 'mood'])],
-            'name' => ['required', 'string', 'max:80'],
-        ]);
+        $data = $request->validated();
         $name = $data['type'] === 'genre' ? $normalizer->canonical($data['name']) : trim($data['name']);
         $slug = $data['type'] === 'genre' ? $normalizer->slug($name) : Str::slug($name);
         if ($slug === '') {

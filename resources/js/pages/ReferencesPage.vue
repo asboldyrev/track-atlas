@@ -6,11 +6,11 @@ import { Card } from '@/components/ui/card'
 import FilterPanel from '@/components/FilterPanel.vue'
 import ListToolbar from '@/components/ListToolbar.vue'
 import TrackList from '@/components/TrackList.vue'
-import { useCatalog } from '@/composables/useCatalog'
+import { useTags } from '@/composables/useTags'
 import { useDensity } from '@/composables/useDensity'
-import { PAGE_SIZES, useTrackPager } from '@/composables/useTrackPager'
+import { PAGE_SIZES, useTracks } from '@/composables/useTracks'
 
-const { genreTags, moodTags, allTags, tagLabel } = useCatalog()
+const { genreTags, moodTags, allTags, tagLabel, loadTags } = useTags()
 const { compact, toggleCompact } = useDensity()
 
 const untaggedLabels = { genre: 'Без жанров', mood: 'Без настроений', all: 'Без любых категорий' }
@@ -38,7 +38,7 @@ function readUrl() {
 
 const initial = readUrl()
 
-const pager = useTrackPager(makeQuery, initial)
+const pager = useTracks(makeQuery, initial)
 const { rows, loading, error, total, lastPage, page, perPage, sort, dir, truncated, pagination, load, goToPage } = pager
 
 const linkCopied = ref(false)
@@ -173,6 +173,7 @@ function backNavigation() {
 }
 
 onMounted(() => {
+  void loadTags()
   void load()
   window.addEventListener('popstate', backNavigation)
 })

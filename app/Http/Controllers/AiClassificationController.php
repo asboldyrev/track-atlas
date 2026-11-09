@@ -3,14 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\OpenRouterRequestException;
+use App\Http\Requests\AiClassifyRequest;
+use App\Http\Requests\SuggestionDecisionRequest;
 use App\Jobs\ClassifyTracksJob;
 use App\Models\MetadataSuggestion;
 use App\Models\Tag;
 use App\Models\Track;
 use App\Services\GenreNormalizer;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -18,13 +18,9 @@ use RuntimeException;
 
 class AiClassificationController extends Controller
 {
-    public function classify(Request $request): JsonResponse
+    public function classify(AiClassifyRequest $request): JsonResponse
     {
-        $data = $request->validate([
-            'tracks' => ['required', 'array', 'min:1', 'max:'.(int) config('api.limits.ai_tracks_max')],
-            'tracks.*' => ['required', 'integer', 'distinct', 'exists:tracks,id'],
-            'retry_empty' => ['sometimes', 'boolean'],
-        ]);
+        $data = $request->validated();
 
         $ids = array_map('intval', $data['tracks']);
         $tracks = Track::query()->whereIn('id', $ids)->where('is_missing', false)->with('tags')->get();
@@ -84,11 +80,9 @@ class AiClassificationController extends Controller
         ]);
     }
 
-    public function decide(Request $request, MetadataSuggestion $suggestion, GenreNormalizer $normalizer): JsonResponse
+    public function decide(SuggestionDecisionRequest $request, MetadataSuggestion $suggestion, GenreNormalizer $normalizer): JsonResponse
     {
-        $data = $request->validate([
-            'decision' => ['required', 'in:accept,reject'],
-        ]);
+        $data = $request->validated();
 
         if ($suggestion->provider !== 'openrouter') {
             return response()->json(['message' => 'Недоступный тип предложения.'], 422);
