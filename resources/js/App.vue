@@ -1,7 +1,5 @@
 <script setup>
 import { computed } from 'vue'
-import { Music2, Database } from '@lucide/vue'
-import { Badge } from '@/components/ui/badge'
 import ReferencesPage from '@/pages/ReferencesPage.vue'
 import CategoriesPage from '@/pages/CategoriesPage.vue'
 import TaggingPage from '@/pages/TaggingPage.vue'
@@ -18,6 +16,12 @@ const navItems = [
   { href: '/categories', key: 'categories', label: 'Категории' },
   { href: '/tagging', key: 'tagging', label: 'Разметка' },
 ]
+
+// Страница референсов — колонка 720 px: оболочка сужается до 768 px
+// (720 + 2×24), чтобы шапка и колонка стояли на одной сетке.
+const containerClass = computed(() => (current.value === 'references'
+  ? 'mx-auto max-w-[768px] px-4 py-0 sm:px-6'
+  : 'mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8'))
 </script>
 
 <template>
@@ -26,36 +30,27 @@ const navItems = [
     class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
   >Перейти к содержимому</a>
 
-  <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-    <header class="mb-6 flex flex-wrap items-center justify-between gap-4">
-      <div class="flex items-center gap-3">
-        <div class="rounded-xl bg-primary p-3 text-primary-foreground"><Music2 :size="25" /></div>
-        <div>
-          <h1 class="text-2xl font-semibold tracking-tight">Track Atlas</h1>
-          <p class="text-sm text-muted-foreground">Музыкальные референсы по жанрам и настроениям</p>
-        </div>
-      </div>
-      <Badge variant="outline" class="gap-2">
-        <Database :size="14" aria-hidden="true" />
-        <span class="size-2 rounded-full bg-emerald-500" aria-hidden="true"></span>
-        Локальная библиотека
-      </Badge>
+  <div :class="containerClass">
+    <header class="flex min-h-14 flex-nowrap items-center gap-x-6 gap-y-1 border-b border-border py-2.5 max-[359px]:flex-wrap max-[359px]:gap-x-3 max-[359px]:gap-y-0.5">
+      <h1 class="shrink-0 whitespace-nowrap text-[15px] font-semibold leading-5 tracking-tight max-[359px]:leading-[18px]">Track Atlas</h1>
+      <nav aria-label="Разделы" class="ml-auto flex gap-3 sm:gap-4 max-[359px]:ml-0">
+        <a
+          v-for="item in navItems"
+          :key="item.key"
+          :href="item.href"
+          class="py-1.5 text-[13px] font-medium leading-4 transition-colors max-[359px]:leading-[13px]"
+          :class="current === item.key ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'"
+          :aria-current="current === item.key ? 'page' : undefined"
+        >{{ item.label }}</a>
+      </nav>
     </header>
 
-    <nav aria-label="Разделы" class="mb-6 flex flex-wrap gap-1 border-b border-border">
-      <a
-        v-for="item in navItems"
-        :key="item.key"
-        :href="item.href"
-        class="rounded-t-md border-b-2 px-4 py-2 text-sm font-medium transition-colors"
-        :class="current === item.key ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'"
-        :aria-current="current === item.key ? 'page' : undefined"
-      >{{ item.label }}</a>
-    </nav>
+    <main v-if="current === 'references'" id="main" tabindex="-1" class="flex flex-col gap-4 pb-12 pt-6 focus:outline-none sm:gap-5 sm:pb-16 sm:pt-10 max-[359px]:pb-10 max-[359px]:pt-5">
+      <ReferencesPage />
+    </main>
 
-    <main id="main" tabindex="-1" class="focus:outline-none">
-      <ReferencesPage v-if="current === 'references'" />
-      <CategoriesPage v-else-if="current === 'categories'" />
+    <main v-else id="main" tabindex="-1" class="pt-6 focus:outline-none">
+      <CategoriesPage v-if="current === 'categories'" />
       <TaggingPage v-else-if="current === 'tagging'" />
       <div v-else class="rounded-xl border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
         Страница не найдена. <a class="underline hover:text-foreground" href="/">Вернуться к референсам</a>.

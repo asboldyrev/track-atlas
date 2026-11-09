@@ -28,13 +28,22 @@ class TrackCatalogQuery
             $query->search($search);
         }
 
-        // OR внутри группы (жанры между собой, настроения между собой),
-        // AND между группами.
+        // Внутри группы режим «или» (по умолчанию) — хотя бы один выбранный
+        // тег; «и» — все выбранные. Между группами всегда И. Дубликаты id
+        // сворачиваются до уникальных до подсчёта: иначе «и» сравнивал бы
+        // число совпадений с числом повторов в запросе.
         foreach (['genres' => 'genre', 'moods' => 'mood'] as $key => $type) {
-            $ids = $filters[$key] ?? [];
-            if ($ids !== []) {
-                $query->whereHas('tags', fn ($q) => $q->where('type', $type)->whereIn('tags.id', $ids));
+            $ids = array_values(array_unique(array_map('intval', $filters[$key] ?? [])));
+            if ($ids === []) {
+                continue;
             }
+            $mode = ($filters[$key.'_mode'] ?? 'or') === 'and' ? 'and' : 'or';
+            $query->whereHas(
+                'tags',
+                fn ($q) => $q->where('type', $type)->whereIn('tags.id', $ids),
+                '>=',
+                $mode === 'and' ? count($ids) : 1,
+            );
         }
 
         if ($untagged = ($filters['untagged'] ?? null)) {

@@ -29,6 +29,10 @@ class TracksIndexRequest extends FormRequest
             'moods' => ['sometimes', 'array'],
             'moods.*' => ['integer', Rule::exists('tags', 'id')->where('type', 'mood')],
             'untagged' => ['sometimes', Rule::in(['genre', 'mood', 'all'])],
+            // Режим группы: «или» (по умолчанию) или «и». Значение вне
+            // белого списка — 422, как у остальных параметров.
+            'genres_mode' => ['sometimes', 'string', Rule::in(['or', 'and'])],
+            'moods_mode' => ['sometimes', 'string', Rule::in(['or', 'and'])],
             'page' => ['sometimes', 'integer', 'min:1'],
             // Сортировка и размер страницы: только значения из белых списков
             // config/api.php — произвольная колонка в ORDER BY не попадёт.

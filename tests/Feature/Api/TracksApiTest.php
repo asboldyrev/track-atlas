@@ -299,4 +299,118 @@ class TracksApiTest extends TestCase
         );
         $this->assertSame(['Zero', 'Bravo', 'Alpha', 'Nothing'], $desc);
     }
+
+    public function test_group_mode_defaults_to_or_and_or_matches_existing_behaviour(): void
+    {
+        $dark = $this->makeTag('genre', 'Darkwave');
+        $synth = $this->makeTag('genre', 'Synthwave');
+
+        $both = $this->makeTrack('Both');
+        $both->tags()->attach([$dark->id, $synth->id]);
+        $this->makeTrack('OnlyDark')->tags()->attach($dark->id);
+
+        // Без genres_mode и с genres_mode=or — одинаковый результат (хотя бы один).
+        $expected = ['Both', 'OnlyDark'];
+        $default = $this->getJson('/api/tracks?genres[]='.$dark->id.'&genres[]='.$synth->id.'&sort=title')
+            ->assertOk()->assertJsonPath('tracks.total', 2)->json('tracks.data');
+        $this->assertSame($expected, array_column($default, 'title'));
+
+        $explicit = $this->getJson('/api/tracks?genres[]='.$dark->id.'&genres[]='.$synth->id.'&genres_mode=or&sort=title')
+            ->assertOk()->assertJsonPath('tracks.total', 2)->json('tracks.data');
+        $this->assertSame($expected, array_column($explicit, 'title'));
+    }
+
+    public function test_and_mode_requires_every_selected_tag_of_the_group(): void
+    {
+        $dark = $this->makeTag('genre', 'Darkwave');
+        $synth = $this->makeTag('genre', 'Synthwave');
+
+        $this->makeTrack('Both')->tags()->attach([$dark->id, $synth->id]);
+        $this->makeTrack('OnlyDark')->tags()->attach($dark->id);
+        $this->makeTrack('Extra')->tags()->attach([$dark->id, $synth->id, $this->makeTag('genre', 'Extra')->id]);
+
+        // «и» → только треки, у которых есть оба жанра (доп. жанры не мешают).
+        $titles = array_column(
+            $this->getJson('/api/tracks?genres[]='.$dark->id.'&genres[]='.$synth->id.'&genres_mode=and&sort=title')
+                ->assertOk()->assertJsonPath('tracks.total', 2)->json('tracks.data'),
+            'title',
+        );
+        $this->assertSame(['Both', 'Extra'], $titles);
+
+        // С одним значением «и» и «или» дают одно и то же.
+        $this->getJson('/api/tracks?genres[]='.$dark->id.'&genres_mode=and')
+            ->assertOk()->assertJsonPath('tracks.total', 3);
+    }
+
+    public function test_duplicate_ids_are_collapsed_before_and_counting(): void
+    {
+        $dark = $this->makeTag('genre', 'Darkwave');
+        $synth = $this->makeTag('genre', 'Synthwave');
+
+        $this->makeTrack('Both')->tags()->attach([$dark->id, $synth->id]);
+        $this->makeTrack('OnlyDark')->tags()->attach($dark->id);
+
+        // Дважды один и тот же id в «и»: требуется одно совпадение, а не два.
+        $this->getJson('/api/tracks?genres[]='.$dark->id.'&genres[]='.$dark->id.'&genres_mode=and&sort=title')
+            ->assertOk()->assertJsonPath('tracks.total', 2)
+            ->assertJsonPath('tracks.data.1.title', 'OnlyDark');
+    }
+
+    public function test_mixed_group_modes_intersect_between_groups(): void
+    {
+        $dark = $this->makeTag('genre', 'Darkwave');
+        $synth = $this->makeTag('genre', 'Synthwave');
+        $mel = $this->makeTag('mood', 'Melancholic');
+        $bold = $this->makeTag('mood', 'Bold');
+
+        // Проходит: оба жанра + (Melancholic или Bold).
+        $hit = $this->makeTrack('Hit');
+        $hit->tags()->attach([$dark->id, $synth->id, $mel->id]);
+
+        // Только один жанр — не проходит «и» по жанрам.
+        $this->makeTrack('OneGenre')->tags()->attach([$dark->id, $mel->id]);
+
+        // Оба жанра, но настроение мимо обеих выбранных.
+        $wrongMood = $this->makeTrack('WrongMood');
+        $wrongMood->tags()->attach([$dark->id, $synth->id, $this->makeTag('mood', 'Angry')->id]);
+
+        $titles = array_column(
+            $this->getJson('/api/tracks?genres[]='.$dark->id.'&genres[]='.$synth->id
+                .'&genres_mode=and&moods[]='.$mel->id.'&moods[]='.$bold->id.'&moods_mode=or&sort=title')
+                ->assertOk()->assertJsonPath('tracks.total', 1)->json('tracks.data'),
+            'title',
+        );
+        $this->assertSame(['Hit'], $titles);
+    }
+
+    public function test_invalid_group_mode_is_rejected(): void
+    {
+        foreach (['genres_mode=maybe', 'moods_mode=andor', 'genres_mode='] as $query) {
+            $this->getJson('/api/tracks?'.$query)
+                ->assertStatus(422)
+                ->assertJsonStructure(['errors']);
+        }
+    }
+
+    public function test_mode_without_a_list_is_not_an_error(): void
+    {
+        $this->makeTrack('Alone');
+
+        $this->getJson('/api/tracks?genres_mode=and')
+            ->assertOk()->assertJsonPath('tracks.total', 1);
+    }
+
+    public function test_and_mode_with_no_match_returns_empty_200(): void
+    {
+        $dark = $this->makeTag('genre', 'Darkwave');
+        $synth = $this->makeTag('genre', 'Synthwave');
+
+        $this->makeTrack('OnlyDark')->tags()->attach($dark->id);
+        $this->makeTrack('OnlySynth')->tags()->attach($synth->id);
+
+        $this->getJson('/api/tracks?genres[]='.$dark->id.'&genres[]='.$synth->id.'&genres_mode=and')
+            ->assertOk()
+            ->assertJsonPath('tracks.total', 0)
+            ->assertJsonCount(0, 'tracks.data');
+    }
 }

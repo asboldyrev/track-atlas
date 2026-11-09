@@ -7,8 +7,16 @@ import { getJson, mutate } from './useApi'
 const genreTags = ref([])
 const moodTags = ref([])
 const loaded = ref(false)
-const loading = ref(false)
-const error = ref('')
+
+// Загрузка и ошибка — по каждому типу отдельно: страница референсов показывает
+// сбой одного справочника, не блокируя второй блок и список треков.
+const genreLoading = ref(false)
+const moodLoading = ref(false)
+const genreError = ref('')
+const moodError = ref('')
+
+const loading = computed(() => genreLoading.value || moodLoading.value)
+const error = computed(() => genreError.value || moodError.value)
 
 const allTags = computed(() => [...genreTags.value, ...moodTags.value])
 
@@ -28,20 +36,31 @@ async function fetchType(type) {
   return collected
 }
 
-async function loadTags() {
-  loading.value = true
-  error.value = ''
+// Загружает один тип справочника; промис не отклоняется, ошибка оседает в
+// errorRef, чтобы упавший справочник не рвал загрузку второго.
+async function loadType(type, target, loadingRef, errorRef) {
+  loadingRef.value = true
+  errorRef.value = ''
   try {
-    const results = await Promise.all([fetchType('genre'), fetchType('mood')])
-    genreTags.value = results[0]
-    moodTags.value = results[1]
-    loaded.value = true
+    target.value = await fetchType(type)
   } catch (e) {
-    error.value = e.message
-    throw e
+    errorRef.value = e.message || 'Ошибка загрузки'
   } finally {
-    loading.value = false
+    loadingRef.value = false
   }
+}
+
+function reloadGenres() {
+  return loadType('genre', genreTags, genreLoading, genreError)
+}
+
+function reloadMoods() {
+  return loadType('mood', moodTags, moodLoading, moodError)
+}
+
+async function loadTags() {
+  await Promise.all([reloadGenres(), reloadMoods()])
+  loaded.value = true
 }
 
 // Русское название — только из name_ru. Для свободного ярлыка (например, из
@@ -72,6 +91,7 @@ function saveTranslation(tagId, nameRu) {
 export function useTags() {
   return {
     genreTags, moodTags, allTags, loaded, loading, error,
-    loadTags, createTag, saveTranslation, tagLabel, translatedLabel,
+    genreLoading, moodLoading, genreError, moodError,
+    loadTags, reloadGenres, reloadMoods, createTag, saveTranslation, tagLabel, translatedLabel,
   }
 }
