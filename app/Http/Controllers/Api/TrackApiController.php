@@ -15,11 +15,14 @@ class TrackApiController extends Controller
      */
     public function index(TracksIndexRequest $request, TrackCatalogQuery $catalog): JsonResponse
     {
+        $filters = $request->validated();
+
+        // per_page приходит только из белого списка (см. config/api.php),
+        // поэтому приведение к int безопасно.
+        $perPage = (int) ($filters['per_page'] ?? config('api.limits.tracks_per_page'));
+
         return response()->json([
-            'tracks' => $catalog->paginate(
-                $request->validated(),
-                (int) config('api.limits.tracks_per_page'),
-            ),
+            'tracks' => $catalog->paginate($filters, $perPage),
         ]);
     }
 }

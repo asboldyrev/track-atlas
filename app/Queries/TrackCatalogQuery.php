@@ -45,9 +45,37 @@ class TrackCatalogQuery
             }
         }
 
-        // Тай-брейк по id: при одинаковых artist/title порядок строк иначе не
-        // определён, и пагинация может повторить или пропустить запись.
-        return $query->orderBy('artist')->orderBy('title')->orderBy('tracks.id');
+        return $this->applyOrder($query, $filters);
+    }
+
+    /**
+     * Сортировка каталога: <sort> <dir>, затем artist, title, tracks.id (asc).
+     *
+     * Колонка выбирается только из белого списка config('api.limits.tracks_sort_columns'),
+     * направление — из tracks_sort_directions, поэтому пользовательская строка
+     * никогда не попадает в ORDER BY. Тай-брейк обязателен: без него при
+     * одинаковых значениях порядок строк не определён и пагинация может
+     * повторить или пропустить запись. Колонки, уже отсортированные как
+     * основная, в тай-брейке не повторяются.
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    private function applyOrder(Builder $query, array $filters): Builder
+    {
+        $columns = config('api.limits.tracks_sort_columns');
+        $sort = (string) ($filters['sort'] ?? 'artist');
+        $column = $columns[$sort] ?? $columns['artist'];
+        $direction = ($filters['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc';
+
+        $query->orderBy($column, $direction);
+
+        foreach ([['artist', 'asc'], ['title', 'asc'], ['tracks.id', 'asc']] as [$tieBreak, $tieDirection]) {
+            if ($tieBreak !== $column) {
+                $query->orderBy($tieBreak, $tieDirection);
+            }
+        }
+
+        return $query;
     }
 
     /**

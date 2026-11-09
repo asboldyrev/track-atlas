@@ -22,6 +22,7 @@ class MetaApiController extends Controller
                 'batch_tracks_max' => (int) $limits['batch_tracks_max'],
                 'ai_tracks_max' => (int) $limits['ai_tracks_max'],
                 'tracks_per_page' => (int) $limits['tracks_per_page'],
+                'tracks_per_page_options' => array_map('intval', $limits['tracks_per_page_options']),
                 'tags_per_page' => (int) $limits['tags_per_page'],
                 'search_max_length' => (int) $limits['search_max_length'],
                 'tag_name_max_length' => (int) $limits['tag_name_max_length'],

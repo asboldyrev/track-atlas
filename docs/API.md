@@ -17,6 +17,7 @@
     "batch_tracks_max": 200,
     "ai_tracks_max": 10,
     "tracks_per_page": 30,
+    "tracks_per_page_options": [10, 20, 30, 50, 100],
     "tags_per_page": 50,
     "search_max_length": 200,
     "tag_name_max_length": 80,
@@ -29,7 +30,9 @@
 - `batch_tracks_max` — максимум id треков в одном `POST /tracks/batch-tags` (то же число, что в валидации).
 - `ai_tracks_max` — максимум треков в одном `POST /ai/classify`; на клиенте по нему режется пачка
   запросов к модели вместо литерала.
-- `tracks_per_page` / `tags_per_page` — размер страницы списков ниже.
+- `tracks_per_page` / `tags_per_page` — размер страницы списков ниже (значение по умолчанию).
+- `tracks_per_page_options` — допустимые значения `per_page` для `/api/tracks`; клиент берёт список
+  отсюда, а не хардкодит его.
 
 ## GET /api/tracks
 
@@ -44,7 +47,19 @@
 | `genres[]` | id тегов типа `genre`, OR внутри группы |
 | `moods[]` | id тегов типа `mood`, OR внутри группы |
 | `untagged` | `genre`, `mood` или `all` — треки без меток этого типа |
-| `page` | номер страницы, размер — `limits.tracks_per_page` |
+| `page` | номер страницы (по умолчанию 1) |
+| `sort` | `artist` (по умолчанию), `title` или `album` |
+| `dir` | `asc` (по умолчанию) или `desc` |
+| `per_page` | `10`, `20`, `30` (по умолчанию), `50` или `100` — только из `limits.tracks_per_page_options` |
+
+Порядок строк: `<sort> <dir>`, затем `artist asc`, `title asc`, `tracks.id asc`. Тай-брейк
+обязателен, поэтому пагинация не повторяет и не пропускает строки; колонка основной сортировки
+в тай-брейке не дублируется. Без параметров порядок прежний (`artist asc, title asc, tracks.id asc`).
+Для 2000 треков при `per_page=100` будет `last_page=20`.
+
+`per_page` и `sort` — белые списки из `config/api.php`; произвольные числа и имена колонок
+отклоняются (`422`). Значения `sort`, `dir`, `per_page` вне списка — `422` с `errors`.
+`page` больше `last_page` даёт `200` и пустой `data`.
 
 Поиск устроен в два пути: запросы от 3 символов идут через полнотекстовый индекс FTS5
 (`tracks_fts`, внешний контент `tracks`), поэтому они совпадают по **началу слова**

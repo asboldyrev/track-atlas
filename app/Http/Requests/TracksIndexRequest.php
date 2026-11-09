@@ -30,6 +30,11 @@ class TracksIndexRequest extends FormRequest
             'moods.*' => ['integer', Rule::exists('tags', 'id')->where('type', 'mood')],
             'untagged' => ['sometimes', Rule::in(['genre', 'mood', 'all'])],
             'page' => ['sometimes', 'integer', 'min:1'],
+            // Сортировка и размер страницы: только значения из белых списков
+            // config/api.php — произвольная колонка в ORDER BY не попадёт.
+            'sort' => ['sometimes', 'string', Rule::in(array_keys(config('api.limits.tracks_sort_columns')))],
+            'dir' => ['sometimes', 'string', Rule::in(config('api.limits.tracks_sort_directions'))],
+            'per_page' => ['sometimes', 'integer', Rule::in(config('api.limits.tracks_per_page_options'))],
         ];
     }
 }

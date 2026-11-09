@@ -33,6 +33,7 @@ class MetaApiTest extends TestCase
             ->assertJsonPath('limits.batch_tracks_max', 200)
             ->assertJsonPath('limits.ai_tracks_max', 10)
             ->assertJsonPath('limits.tracks_per_page', 30)
+            ->assertJsonPath('limits.tracks_per_page_options', [10, 20, 30, 50, 100])
             ->assertJsonPath('limits.tags_per_page', 50)
             ->assertJsonPath('limits.search_max_length', 200)
             ->assertJsonPath('limits.tag_name_max_length', 80)
